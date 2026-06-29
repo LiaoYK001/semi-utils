@@ -356,6 +356,7 @@
                                         <span class="mr-2" x-show="hasChildren" x-html="folderIcon"></span>
                                         <span class="mr-2" x-show="!hasChildren" x-html="fileIcon"></span>
                                         <span class="flex-1 text-xs font-medium text-slate-700 truncate" x-text="label"></span>
+                                        <span x-show="node._customText" class="text-[10px] px-1.5 py-px bg-violet-100 text-violet-600 rounded-full font-medium truncate max-w-[100px] ml-1 shrink-0" x-text="node._customText"></span>
                                         <span x-show="isFile"
                                               class="ml-2 shrink-0 text-[10px] font-medium tabular-nums"
                                               :class="rating ? 'text-amber-500' : 'text-slate-300'"
@@ -379,6 +380,7 @@
                                                     <span class="mr-2" x-show="hasChildren" x-html="folderIcon"></span>
                                                     <span class="mr-2" x-show="!hasChildren" x-html="fileIcon"></span>
                                                     <span class="flex-1 text-xs font-medium text-slate-700 truncate" x-text="label"></span>
+                                                    <span x-show="node._customText" class="text-[10px] px-1.5 py-px bg-violet-100 text-violet-600 rounded-full font-medium truncate max-w-[100px] ml-1 shrink-0" x-text="node._customText"></span>
                                                     <span x-show="isFile"
                                                           class="ml-2 shrink-0 text-[10px] font-medium tabular-nums"
                                                           :class="rating ? 'text-amber-500' : 'text-slate-300'"
@@ -402,6 +404,7 @@
                                                                 <span class="mr-2" x-show="hasChildren" x-html="folderIcon"></span>
                                                                 <span class="mr-2" x-show="!hasChildren" x-html="fileIcon"></span>
                                                                 <span class="flex-1 text-xs font-medium text-slate-700 truncate" x-text="label"></span>
+                                                                <span x-show="node._customText" class="text-[10px] px-1.5 py-px bg-violet-100 text-violet-600 rounded-full font-medium truncate max-w-[100px] ml-1 shrink-0" x-text="node._customText"></span>
                                                                 <span x-show="isFile"
                                                                       class="ml-2 shrink-0 text-[10px] font-medium tabular-nums"
                                                                       :class="rating ? 'text-amber-500' : 'text-slate-300'"
@@ -425,6 +428,7 @@
                                                                             <span class="mr-2" x-show="hasChildren" x-html="folderIcon"></span>
                                                                             <span class="mr-2" x-show="!hasChildren" x-html="fileIcon"></span>
                                                                             <span class="flex-1 text-xs font-medium text-slate-700 truncate" x-text="label"></span>
+                                                                            <span x-show="node._customText" class="text-[10px] px-1.5 py-px bg-violet-100 text-violet-600 rounded-full font-medium truncate max-w-[100px] ml-1 shrink-0" x-text="node._customText"></span>
                                                                             <span x-show="isFile"
                                                                                   class="ml-2 shrink-0 text-[10px] font-medium tabular-nums"
                                                                                   :class="rating ? 'text-amber-500' : 'text-slate-300'"
@@ -564,6 +568,53 @@
                             <option :value="font" x-text="font"></option>
                         </template>
                     </select>
+                </div>
+
+                <!-- 地点预设标签（有预览图时可见） -->
+                <div x-show="preview.url && preview.isFile && presets && presets.length > 0" class="px-5 py-2 border-b border-slate-100 bg-white/80 space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[10px] text-slate-400 font-medium">地点预设</span>
+                        <div class="flex items-center gap-1">
+                            <button @click="addCurrentTextAsPreset()"
+                                    :disabled="!currentCustomText"
+                                    title="将当前地名保存为预设"
+                                    class="text-[10px] px-2 py-0.5 rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                + 存为预设
+                            </button>
+                            <button @click="showPresetManager = !showPresetManager"
+                                    class="text-[10px] px-2 py-0.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-all"
+                                    x-text="showPresetManager ? '收起' : '管理'"></button>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-1">
+                        <template x-for="(preset, idx) in presets" :key="idx">
+                            <span class="group flex items-center gap-0.5">
+                                <button @click="applyPresetToCurrent(preset)"
+                                        @dblclick="applyPresetToSelected(preset)"
+                                        class="text-[10px] px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 transition-all cursor-pointer"
+                                        x-text="preset"
+                                        :title="'单击应用到当前文件，双击批量应用到所有选中文件'"></button>
+                                <button x-show="showPresetManager"
+                                        @click="removePreset(idx)"
+                                        class="text-[9px] text-slate-400 hover:text-red-500 transition-all leading-none">&times;</button>
+                            </span>
+                        </template>
+                    </div>
+                    <!-- 预设管理器 — 添加新预设 -->
+                    <div x-show="showPresetManager" class="flex gap-1 pt-1">
+                        <input type="text" x-model="newPresetText"
+                               @keydown.enter="addPreset()"
+                               placeholder="输入新预设地名..."
+                               class="flex-1 h-7 px-2 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                        <button @click="addPreset()"
+                                :disabled="!newPresetText.trim()"
+                                class="h-7 px-3 text-[10px] rounded-lg bg-violet-500 hover:bg-violet-600 text-white font-medium disabled:opacity-30 transition-all">
+                            添加
+                        </button>
+                    </div>
+                    <p class="text-[9px] text-slate-300 leading-tight">
+                        <strong>单击</strong>应用到当前预览 · <strong>双击</strong>批量应用到全部选中文件
+                    </p>
                 </div>
 
                 <!-- 底部居中信息水印 — 逐行设置面板（仅该模式可见） -->
@@ -1057,11 +1108,16 @@
             // 底部居中信息水印 — 逐行设置
             showBottomCenterSettings: true,
             bottomCenterActiveTab: 'location',
+            globalWatermarkFont: '',
             bottomCenterSettings: {
                 location: { opacity: 230, font: 'AlibabaPuHuiTi-2-45-Light.otf', height: 4.8, bottom: 19.2 },
                 time:     { opacity: 115, font: 'AlibabaPuHuiTi-2-45-Light.otf', height: 1.68, bottom: 13.6 },
                 parameter:{ opacity: 165, font: 'AlibabaPuHuiTi-2-45-Light.otf', height: 2.4, bottom: 8.8 },
             },
+            // 地点预设标签
+            presets: [],
+            showPresetManager: false,
+            newPresetText: '',
             debug: {
                 collapsed: false,
                 logs: [],
@@ -1222,6 +1278,84 @@
             updateBottomCenterSetting(line, field, value) {
                 this.bottomCenterSettings[line][field] = (field === 'font') ? value : parseFloat(value) || 0;
                 this.applyBottomCenterSetting(line, field, value);
+                // 字体变更时同步全局字体
+                if (field === 'font') {
+                    this.globalWatermarkFont = value || '';
+                }
+            },
+
+            // ---- 地点预设标签管理 ----
+
+            async fetchPresets() {
+                try {
+                    const res = await fetch('/api/v1/presets');
+                    const json = await res.json();
+                    this.presets = json.presets || [];
+                } catch (_) {}
+            },
+
+            async savePresetsToServer() {
+                try {
+                    await fetch('/api/v1/presets', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({presets: this.presets})
+                    });
+                } catch (e) {
+                    this.toast('保存预设失败: ' + e.message, 'error');
+                }
+            },
+
+            addPreset() {
+                const text = this.newPresetText.trim();
+                if (!text) return;
+                if (this.presets.includes(text)) {
+                    this.toast('该预设已存在', 'error');
+                    return;
+                }
+                this.presets.push(text);
+                this.newPresetText = '';
+                this.savePresetsToServer();
+                this.toast(`已添加预设: ${text}`, 'success');
+            },
+
+            addCurrentTextAsPreset() {
+                const text = this.currentCustomText.trim();
+                if (!text) return;
+                if (this.presets.includes(text)) {
+                    this.toast('该预设已存在', 'error');
+                    return;
+                }
+                this.presets.push(text);
+                this.savePresetsToServer();
+                this.toast(`已保存为预设: ${text}`, 'success');
+            },
+
+            removePreset(index) {
+                const name = this.presets[index];
+                this.presets.splice(index, 1);
+                this.savePresetsToServer();
+                this.toast(`已删除预设: ${name}`, 'success');
+            },
+
+            applyPresetToSelected(presetText) {
+                if (!presetText) return;
+                let count = 0;
+                this.selectedItems.forEach(path => {
+                    this.customTexts[path] = presetText;
+                    count++;
+                });
+                this.resetPreviewImage();
+                this.applyInputTreeView();
+                this.toast(`已将 "${presetText}" 应用到 ${count} 个文件`, 'success');
+            },
+
+            applyPresetToCurrent(presetText) {
+                if (!this.preview.path || !presetText) return;
+                this.customTexts[this.preview.path] = presetText;
+                this.resetPreviewImage();
+                this.applyInputTreeView();
+                this.toast(`已应用: ${presetText}`, 'success');
             },
 
             async init() {
@@ -1396,6 +1530,7 @@
                         }
                         this.addDebugLog('info', `配置加载完成: template=${this.config.template_name}, templates=${this.availableTemplates.length}, fonts=${this.availableFonts.length}`);
                         this.parseBottomCenterSettings();
+                        if (data.presets) { this.presets = data.presets; }
                     }
                 } catch (e) {
                     this.addDebugLog('error', '获取配置失败: ' + e.message);
@@ -1688,6 +1823,17 @@
 
             applyInputTreeView() {
                 const raw = JSON.parse(JSON.stringify(this.rawInputTreeData || []));
+                // 注入 customText 到文件节点
+                const injectCustomText = (nodes) => {
+                    (nodes || []).forEach(node => {
+                        if (node.is_file) {
+                            const key = node.value || node.key;
+                            node._customText = this.customTexts[key] || '';
+                        }
+                        if (node.children) injectCustomText(node.children);
+                    });
+                };
+                injectCustomText(raw);
                 let visibleTree = [];
                 if (this.ratingGroupMode) {
                     const files = this.collectInputFiles(raw).filter(file => this.matchesRatingFilter(file));
@@ -1744,6 +1890,10 @@
 
             setCurrentWatermarkFont(value) {
                 if (!this.preview.path) return;
+                // 底部居中模式下同步全局字体
+                if (this.isBottomCenterMode) {
+                    this.globalWatermarkFont = value || '';
+                }
                 if (value) {
                     this.watermarkFonts[this.preview.path] = value;
                 } else {
@@ -1764,7 +1914,7 @@
                         body: JSON.stringify({
                             path: this.preview.path,
                             customText: this.currentCustomText,
-                            watermarkFont: this.currentWatermarkFont,
+                            watermarkFont: this.currentWatermarkFont || this.globalWatermarkFont,
                             templateName: this.config.template_name
                         })
                     });
@@ -1820,7 +1970,8 @@
                         body: JSON.stringify({
                             selectedItems: this.selectedItems,
                             customTexts: this.customTexts,
-                            watermarkFonts: this.watermarkFonts
+                            watermarkFonts: this.watermarkFonts,
+                            watermarkFont: this.globalWatermarkFont
                         })
                     });
                     this.addDebugLog('request', `POST /api/v1/start_process -> ${response.status} ${response.statusText}`);

@@ -13,6 +13,8 @@ from PIL import Image
 
 from core import CONFIG_PATH
 from core.configs import fonts_dir, load_config, load_project_info
+
+PRESETS_PATH = Path('config/presets.json')
 from core.logger import logger, init_from_config
 from core.util import (list_files, log_rt, get_exif, convert_heic_to_jpeg, get_template, get_template_content,
                        save_template, list_templates)
@@ -24,6 +26,26 @@ project_info = load_project_info()
 
 # 初始化日志系统（必须在创建 Flask app 之前）
 init_from_config(config)
+
+
+def load_presets():
+    """加载地点预设列表"""
+    if not PRESETS_PATH.exists():
+        return []
+    try:
+        with open(PRESETS_PATH, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def save_presets(presets):
+    """保存地点预设列表"""
+    PRESETS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(PRESETS_PATH, 'w', encoding='utf-8') as f:
+        json.dump(presets, f, ensure_ascii=False, indent=2)
+
 
 # 创建 Flask app
 api = Flask(__name__)
@@ -57,6 +79,7 @@ def get_config():
         'quality': config.get('DEFAULT', 'quality'),
         'templates': list_templates(),
         'fonts': fonts,
+        'presets': load_presets(),
     })
 
 
@@ -469,6 +492,30 @@ def create_template_api():
 
     except FileExistsError:
         return jsonify({'error': f'Template already exists'}), 409
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/api/v1/presets', methods=['GET'])
+def get_presets():
+    """获取地点预设列表"""
+    return jsonify({'presets': load_presets()})
+
+
+@api.route('/api/v1/presets', methods=['POST'])
+def save_presets_api():
+    """保存地点预设列表"""
+    try:
+        data = request.get_json()
+        if not data or 'presets' not in data:
+            return jsonify({'error': 'Missing presets'}), 400
+        presets = data['presets']
+        if not isinstance(presets, list):
+            return jsonify({'error': 'presets must be a list'}), 400
+        # 去重 + 过滤空值
+        presets = list(dict.fromkeys([p.strip() for p in presets if isinstance(p, str) and p.strip()]))
+        save_presets(presets)
+        return jsonify({'message': 'Presets saved', 'presets': presets}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
