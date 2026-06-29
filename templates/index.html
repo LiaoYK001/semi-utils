@@ -285,6 +285,39 @@
                         <button @click="selectAll()" class="text-xs text-primary-600 hover:text-primary-700 font-medium">全选</button>
                     </div>
 
+                    <div class="mb-2 grid grid-cols-2 gap-2 shrink-0">
+                        <select x-model="ratingFilter"
+                                @change="applyInputTreeView()"
+                                class="h-8 px-2 rounded-lg border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none text-xs bg-white">
+                            <option value="all">全部星级</option>
+                            <option value="unrated">未评级</option>
+                            <option value="5">5星</option>
+                            <option value="4">4星</option>
+                            <option value="3">3星</option>
+                            <option value="2">2星</option>
+                            <option value="1">1星</option>
+                            <option value="gte5">≥5星</option>
+                            <option value="gte4">≥4星</option>
+                            <option value="gte3">≥3星</option>
+                            <option value="gte2">≥2星</option>
+                            <option value="gte1">≥1星</option>
+                        </select>
+                        <select x-model="ratingSort"
+                                @change="applyInputTreeView()"
+                                class="h-8 px-2 rounded-lg border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none text-xs bg-white">
+                            <option value="default">默认时间</option>
+                            <option value="name">文件名</option>
+                            <option value="rating_desc">星级高到低</option>
+                            <option value="rating_asc">星级低到高</option>
+                        </select>
+                        <button @click="ratingGroupMode = !ratingGroupMode; applyInputTreeView()"
+                                class="col-span-2 h-8 px-2 rounded-lg border text-xs font-medium transition-all"
+                                :class="ratingGroupMode ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-slate-200 bg-white text-slate-500 hover:text-slate-700'">
+                            <span x-text="ratingGroupMode ? '已按星级分类' : '按星级分类'"></span>
+                            <span class="ml-2 text-[11px] text-slate-400" x-text="`${visibleInputFileCount} 可见`"></span>
+                        </button>
+                    </div>
+
                     <div class="flex-1 overflow-y-auto pr-2">
                         <!-- Loading -->
                         <div x-show="loading.files" class="flex flex-col items-center justify-center py-12 text-slate-400">
@@ -323,6 +356,10 @@
                                         <span class="mr-2" x-show="hasChildren" x-html="folderIcon"></span>
                                         <span class="mr-2" x-show="!hasChildren" x-html="fileIcon"></span>
                                         <span class="flex-1 text-xs font-medium text-slate-700 truncate" x-text="label"></span>
+                                        <span x-show="isFile"
+                                              class="ml-2 shrink-0 text-[10px] font-medium tabular-nums"
+                                              :class="rating ? 'text-amber-500' : 'text-slate-300'"
+                                              x-text="ratingLabel"></span>
                                     </div>
                                     <div class="children" x-show="isOpen && hasChildren">
                                         <template x-for="(child, childIndex) in node.children" :key="child.value || child.label || childIndex">
@@ -342,6 +379,10 @@
                                                     <span class="mr-2" x-show="hasChildren" x-html="folderIcon"></span>
                                                     <span class="mr-2" x-show="!hasChildren" x-html="fileIcon"></span>
                                                     <span class="flex-1 text-xs font-medium text-slate-700 truncate" x-text="label"></span>
+                                                    <span x-show="isFile"
+                                                          class="ml-2 shrink-0 text-[10px] font-medium tabular-nums"
+                                                          :class="rating ? 'text-amber-500' : 'text-slate-300'"
+                                                          x-text="ratingLabel"></span>
                                                 </div>
                                                 <div class="children" x-show="isOpen && hasChildren">
                                                     <template x-for="(grandchild, grandIndex) in child.children" :key="grandchild.value || grandchild.label || grandIndex">
@@ -361,6 +402,10 @@
                                                                 <span class="mr-2" x-show="hasChildren" x-html="folderIcon"></span>
                                                                 <span class="mr-2" x-show="!hasChildren" x-html="fileIcon"></span>
                                                                 <span class="flex-1 text-xs font-medium text-slate-700 truncate" x-text="label"></span>
+                                                                <span x-show="isFile"
+                                                                      class="ml-2 shrink-0 text-[10px] font-medium tabular-nums"
+                                                                      :class="rating ? 'text-amber-500' : 'text-slate-300'"
+                                                                      x-text="ratingLabel"></span>
                                                             </div>
                                                             <div class="children" x-show="isOpen && hasChildren">
                                                                 <template x-for="(ggchild, ggIndex) in grandchild.children" :key="ggchild.value || ggchild.label || ggIndex">
@@ -380,6 +425,10 @@
                                                                             <span class="mr-2" x-show="hasChildren" x-html="folderIcon"></span>
                                                                             <span class="mr-2" x-show="!hasChildren" x-html="fileIcon"></span>
                                                                             <span class="flex-1 text-xs font-medium text-slate-700 truncate" x-text="label"></span>
+                                                                            <span x-show="isFile"
+                                                                                  class="ml-2 shrink-0 text-[10px] font-medium tabular-nums"
+                                                                                  :class="rating ? 'text-amber-500' : 'text-slate-300'"
+                                                                                  x-text="ratingLabel"></span>
                                                                         </div>
                                                                     </div>
                                                                 </template>
@@ -893,6 +942,17 @@
                 return this.node.label || this.node.title || this.node.name;
             },
 
+            get rating() {
+                return this.isFile ? (this.node.rating || null) : null;
+            },
+
+            get ratingLabel() {
+                if (!this.rating) return '未评级';
+                const stars = '★★★★★'.slice(0, this.rating);
+                const empty = '☆☆☆☆☆'.slice(0, 5 - this.rating);
+                return stars + empty;
+            },
+
             get isChecked() {
                 if (this.isFile) {
                     return window.Alpine.store('app').selectedItems.includes(this.value);
@@ -981,10 +1041,15 @@
             config: {input_folder: '', output_folder: '', template: '{}', template_name: '', quality: 100, override_existed: false},
             availableTemplates: [],
             availableFonts: [],
+            rawInputTreeData: [],
             inputTreeData: [],
             outputTreeData: [],
             treeKey: 0,
             selectedItems: [],
+            ratingFilter: 'all',
+            ratingSort: 'default',
+            ratingGroupMode: false,
+            visibleInputFileCount: 0,
             customTexts: {},
             watermarkFonts: {},
             preview: {url: '', name: '', path: '', isFile: false},
@@ -1517,7 +1582,8 @@
                         this.treeKey = (this.treeKey || 0) + 1;
 
                         if (renderInput) {
-                            this.inputTreeData = JSON.parse(JSON.stringify(data.input_files || []));
+                            this.rawInputTreeData = JSON.parse(JSON.stringify(data.input_files || []));
+                            this.applyInputTreeView();
                         }
                         this.outputTreeData = JSON.parse(JSON.stringify(data.output_files || []));
                     }
@@ -1530,6 +1596,113 @@
                     this.addDebugLog('info', '文件列表加载结束');
                     this.loading.files = false;
                 }
+            },
+
+            normalizeRatingValue(value) {
+                const rating = Number(value);
+                return Number.isInteger(rating) && rating >= 1 && rating <= 5 ? rating : null;
+            },
+
+            matchesRatingFilter(node) {
+                const rating = this.normalizeRatingValue(node.rating);
+                if (this.ratingFilter === 'all') return true;
+                if (this.ratingFilter === 'unrated') return rating === null;
+                if (this.ratingFilter.startsWith('gte')) {
+                    const threshold = Number(this.ratingFilter.replace('gte', ''));
+                    return rating !== null && rating >= threshold;
+                }
+                return rating === Number(this.ratingFilter);
+            },
+
+            collectInputFiles(nodes) {
+                let files = [];
+                (nodes || []).forEach(node => {
+                    if (node.is_file) {
+                        files.push({...node, rating: this.normalizeRatingValue(node.rating)});
+                    } else if (node.children) {
+                        files = files.concat(this.collectInputFiles(node.children));
+                    }
+                });
+                return files;
+            },
+
+            compareFileNodes(a, b) {
+                if (this.ratingSort === 'name') {
+                    return String(a.label || '').localeCompare(String(b.label || ''), 'zh-CN', {numeric: true});
+                }
+                if (this.ratingSort === 'rating_desc') {
+                    const ratingDiff = (this.normalizeRatingValue(b.rating) || 0) - (this.normalizeRatingValue(a.rating) || 0);
+                    if (ratingDiff !== 0) return ratingDiff;
+                    return String(a.label || '').localeCompare(String(b.label || ''), 'zh-CN', {numeric: true});
+                }
+                if (this.ratingSort === 'rating_asc') {
+                    const ratingDiff = (this.normalizeRatingValue(a.rating) || 0) - (this.normalizeRatingValue(b.rating) || 0);
+                    if (ratingDiff !== 0) return ratingDiff;
+                    return String(a.label || '').localeCompare(String(b.label || ''), 'zh-CN', {numeric: true});
+                }
+                return 0;
+            },
+
+            filterAndSortTree(nodes) {
+                const mapped = [];
+                (nodes || []).forEach(node => {
+                    if (node.is_file) {
+                        if (this.matchesRatingFilter(node)) {
+                            mapped.push({...node, rating: this.normalizeRatingValue(node.rating)});
+                        }
+                        return;
+                    }
+
+                    const children = this.filterAndSortTree(node.children || []);
+                    if (children.length > 0) {
+                        mapped.push({...node, children});
+                    }
+                });
+
+                if (this.ratingSort === 'default') {
+                    return mapped;
+                }
+
+                return mapped.sort((a, b) => {
+                    if (a.is_file && b.is_file) return this.compareFileNodes(a, b);
+                    if (a.is_file !== b.is_file) return a.is_file ? 1 : -1;
+                    return String(a.label || '').localeCompare(String(b.label || ''), 'zh-CN', {numeric: true});
+                });
+            },
+
+            buildRatingGroups(files) {
+                const groups = [];
+                [5, 4, 3, 2, 1, null].forEach(rating => {
+                    const children = files
+                        .filter(file => this.normalizeRatingValue(file.rating) === rating)
+                        .sort((a, b) => this.compareFileNodes(a, b));
+                    if (children.length === 0) return;
+                    groups.push({
+                        label: rating ? `${rating}星` : '未评级',
+                        value: `rating-group-${rating || 'unrated'}`,
+                        children,
+                    });
+                });
+                return groups;
+            },
+
+            applyInputTreeView() {
+                const raw = JSON.parse(JSON.stringify(this.rawInputTreeData || []));
+                let visibleTree = [];
+                if (this.ratingGroupMode) {
+                    const files = this.collectInputFiles(raw).filter(file => this.matchesRatingFilter(file));
+                    visibleTree = this.buildRatingGroups(files);
+                } else {
+                    visibleTree = this.filterAndSortTree(raw);
+                }
+
+                this.inputTreeData = visibleTree;
+                this.visibleInputFileCount = this.collectInputFiles(visibleTree).length;
+                this.treeKey = (this.treeKey || 0) + 1;
+                this.addDebugLog(
+                    'info',
+                    `星级视图: filter=${this.ratingFilter}, sort=${this.ratingSort}, group=${this.ratingGroupMode}, visible=${this.visibleInputFileCount}`
+                );
             },
 
             selectAll() {

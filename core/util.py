@@ -35,6 +35,8 @@ else:
     EXIFTOOL_PATH = Path('./exiftool/exiftool')
     ENCODING = 'utf-8'
 
+_RATING_CACHE = {}
+
 
 def get_exif(path) -> dict:
     """
@@ -71,10 +73,12 @@ def get_exif(path) -> dict:
 
     # 兜底：使用 Pillow 提取 EXIF
     try:
-        img = Image.open(path)
-        raw_exif = img._getexif() or {}
+        with Image.open(path) as img:
+            raw_exif = img._getexif() or {}
         # EXIF 标签 ID → 名称映射（与 exiftool 输出风格对齐，去掉空格和斜杠）
         EXIF_TAG_MAP = {
+            18246: 'Rating',
+            18249: 'RatingPercent',
             271: 'Make',
             272: 'CameraModelName',
             33432: 'Copyright',
@@ -142,6 +146,158 @@ def get_exif(path) -> dict:
     return exif_dict
 
 
+def normalize_rating(value):
+    """Normalize Windows/Lightroom star ratings to 1-5."""
+    if value is None:
+        return None
+    try:
+        rating = int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return None
+    return rating if 1 <= rating <= 5 else None
+
+
+def normalize_rating_percent(value):
+    """Normalize Windows RatingPercent values to 1-5 stars."""
+    if value is None:
+        return None
+    try:
+        percent = int(round(float(str(value).strip())))
+    except (TypeError, ValueError):
+        return None
+    if percent <= 0:
+        return None
+    if percent <= 1:
+        return 1
+    if percent <= 25:
+        return 2
+    if percent <= 50:
+        return 3
+    if percent <= 75:
+        return 4
+    return 5 if percent <= 100 else None
+
+
+def _extract_xmp_rating_from_text(text):
+    if not text:
+        return None
+    patterns = [
+        r'(?:xmp:)?Rating\s*=\s*["\']([^"\']+)["\']',
+        r'<(?:xmp:)?Rating[^>]*>\s*([^<]+)\s*</(?:xmp:)?Rating>',
+        r'<[^>]+(?:Rating)[^>]*>\s*([^<]+)\s*</[^>]+>',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            rating = normalize_rating(match.group(1))
+            if rating is not None:
+                return rating
+    return None
+
+
+def _read_sidecar_xmp_rating(path):
+    image_path = Path(path)
+    candidates = []
+    stem_sidecar = image_path.with_suffix('.xmp')
+    suffixed_sidecar = Path(str(image_path) + '.xmp')
+    for candidate in (stem_sidecar, suffixed_sidecar):
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    for candidate in candidates:
+        if not candidate.exists() or not candidate.is_file():
+            continue
+        try:
+            text = candidate.read_text(encoding='utf-8', errors='ignore')
+            rating = _extract_xmp_rating_from_text(text)
+            if rating is not None:
+                return rating
+        except OSError as e:
+            logger.debug(f"读取 XMP sidecar 失败 {candidate}: {e}")
+    return None
+
+
+def _read_embedded_xmp_rating(path):
+    try:
+        data = Path(path).read_bytes()
+    except OSError as e:
+        logger.debug(f"读取内嵌 XMP 失败 {path}: {e}")
+        return None
+
+    text = data.decode('utf-8', errors='ignore')
+    xmp_match = re.search(
+        r'(<x:xmpmeta\b.*?</x:xmpmeta>)',
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if xmp_match:
+        return _extract_xmp_rating_from_text(xmp_match.group(1))
+    return _extract_xmp_rating_from_text(text)
+
+
+def _read_pillow_rating(path):
+    try:
+        with Image.open(path) as img:
+            raw_exif = img.getexif() or {}
+            rating = normalize_rating(raw_exif.get(18246))
+            if rating is not None:
+                return rating
+            return normalize_rating_percent(raw_exif.get(18249))
+    except Exception as e:
+        logger.debug(f"Pillow 读取星级失败 {path}: {e}")
+    return None
+
+
+def _rating_cache_key(path):
+    image_path = Path(path)
+    try:
+        image_stat = image_path.stat()
+    except OSError:
+        return None
+
+    sidecar_parts = []
+    for candidate in (image_path.with_suffix('.xmp'), Path(str(image_path) + '.xmp')):
+        try:
+            stat = candidate.stat()
+            sidecar_parts.append((str(candidate.resolve()), stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            sidecar_parts.append((str(candidate), None, None))
+
+    return (
+        str(image_path.resolve()),
+        image_stat.st_mtime_ns,
+        image_stat.st_size,
+        tuple(sidecar_parts),
+    )
+
+
+def get_image_rating(path):
+    """Read Windows/Lightroom 1-5 star rating from EXIF/XMP metadata."""
+    cache_key = _rating_cache_key(path)
+    if cache_key in _RATING_CACHE:
+        return _RATING_CACHE[cache_key]
+
+    rating = None
+    try:
+        exif = get_exif(path)
+        rating = normalize_rating(exif.get('Rating'))
+        if rating is None:
+            rating = normalize_rating_percent(exif.get('RatingPercent'))
+    except Exception as e:
+        logger.debug(f"EXIF 读取星级失败 {path}: {e}")
+
+    if rating is None:
+        rating = _read_pillow_rating(path)
+    if rating is None:
+        rating = _read_embedded_xmp_rating(path)
+    if rating is None:
+        rating = _read_sidecar_xmp_rating(path)
+
+    if cache_key is not None:
+        _RATING_CACHE[cache_key] = rating
+    return rating
+
+
 def list_files(path: str, suffixes: set[str], depth: int = 0, max_depth: int = 20):
     """
     使用 pathlib 实现的版本
@@ -193,7 +349,8 @@ def list_files(path: str, suffixes: set[str], depth: int = 0, max_depth: int = 2
                 result.append({
                     'label': item.name,
                     'value': str(item),
-                    'is_file': True
+                    'is_file': True,
+                    'rating': get_image_rating(str(item)),
                 })
 
     except PermissionError:
