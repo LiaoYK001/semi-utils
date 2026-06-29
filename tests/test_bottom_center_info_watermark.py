@@ -8,6 +8,8 @@ from core.jinja2renders import (
     format_iso,
     format_photo_time,
     format_shutter_speed,
+    vh,
+    vw,
 )
 from processor.core import PipelineContext
 from processor.filters import BottomCenterInfoWatermarkFilter
@@ -36,6 +38,12 @@ class BottomCenterInfoWatermarkTest(unittest.TestCase):
         self.assertEqual(format_aperture({}), "-")
         self.assertEqual(format_iso({}), "-")
 
+    def test_viewport_helpers_use_image_size_fallback(self):
+        context = {"exif": {}, "image_size": {"width": 1000, "height": 500}}
+
+        self.assertEqual(vw(context, 10), 100)
+        self.assertEqual(vh(context, 10), 50)
+
     def test_bottom_center_info_watermark_changes_image_without_location(self):
         source = Image.new("RGBA", (640, 360), (20, 80, 120, 255))
         ctx = PipelineContext({
@@ -58,13 +66,17 @@ class BottomCenterInfoWatermarkTest(unittest.TestCase):
             "line_spacing": 6,
             "bottom_offset": 24,
             "parameter_gap": 24,
+            "blend_mode": "screen",
+            "time_opacity": 115,
+            "parameter_opacity": 165,
         })
 
         BottomCenterInfoWatermarkFilter().process(ctx)
 
         result = ctx.get_buffer()[0]
         self.assertEqual(result.size, source.size)
-        self.assertIsNotNone(ImageChops.difference(source, result).getbbox())
+        diff = ImageChops.difference(source.convert("RGB"), result.convert("RGB"))
+        self.assertIsNotNone(diff.getbbox())
 
 
 if __name__ == "__main__":

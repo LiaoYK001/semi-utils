@@ -96,13 +96,17 @@ def format_iso(exif):
 @pass_context
 def vw(context, percent):
     exif = context.get('exif', {})
-    return int(int(exif.get('ImageWidth', 0)) * percent / 100)
+    image_size = context.get('image_size', {})
+    width = exif.get('ImageWidth') or image_size.get('width') or 0
+    return int(int(width) * percent / 100)
 
 
 @pass_context
 def vh(context, percent):
     exif = context.get('exif', {})
-    return int(int(exif.get('ImageHeight', 0)) * percent / 100)
+    image_size = context.get('image_size', {})
+    height = exif.get('ImageHeight') or image_size.get('height') or 0
+    return int(int(height) * percent / 100)
 
 
 @pass_context

@@ -525,6 +525,14 @@
                                 <span x-text="loading.preview ? '生成中...' : '刷新预览'"></span>
                             </button>
                         </div>
+                        <select :value="currentWatermarkFont"
+                                @change="setCurrentWatermarkFont($event.target.value)"
+                                class="mb-2 h-9 w-full px-3 rounded-xl border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-sm bg-white">
+                            <option value="">默认字体</option>
+                            <template x-for="font in availableFonts" :key="font">
+                                <option :value="font" x-text="font"></option>
+                            </template>
+                        </select>
                         <div class="flex-1 relative rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
                             <img x-effect="if(preview.isFile) $el.src = preview.url"
                                  class="absolute inset-0 w-full h-full object-contain p-2">
@@ -829,11 +837,13 @@
             loading: {files: false, process: false, preview: false},
             config: {input_folder: '', output_folder: '', template: '{}', template_name: '', quality: 100, override_existed: false},
             availableTemplates: [],
+            availableFonts: [],
             inputTreeData: [],
             outputTreeData: [],
             treeKey: 0,
             selectedItems: [],
             customTexts: {},
+            watermarkFonts: {},
             preview: {url: '', name: '', path: '', isFile: false},
             aceEditor: null,
             progress: {
@@ -900,6 +910,10 @@
 
             get currentCustomText() {
                 return this.preview.path ? (this.customTexts[this.preview.path] || '') : '';
+            },
+
+            get currentWatermarkFont() {
+                return this.preview.path ? (this.watermarkFonts[this.preview.path] || '') : '';
             },
 
             async init() {
@@ -969,6 +983,9 @@
                         // 获取模板列表
                         if (data.templates) {
                             this.availableTemplates = data.templates;
+                        }
+                        if (data.fonts) {
+                            this.availableFonts = data.fonts;
                         }
                     }
                 } catch (e) {
@@ -1191,6 +1208,16 @@
                 this.resetPreviewImage();
             },
 
+            setCurrentWatermarkFont(value) {
+                if (!this.preview.path) return;
+                if (value) {
+                    this.watermarkFonts[this.preview.path] = value;
+                } else {
+                    delete this.watermarkFonts[this.preview.path];
+                }
+                this.resetPreviewImage();
+            },
+
             async renderPreview() {
                 if (!this.preview.path) return;
                 this.loading.preview = true;
@@ -1201,6 +1228,7 @@
                         body: JSON.stringify({
                             path: this.preview.path,
                             customText: this.currentCustomText,
+                            watermarkFont: this.currentWatermarkFont,
                             templateName: this.config.template_name
                         })
                     });
@@ -1243,7 +1271,11 @@
                     const response = await fetch('/api/v1/start_process', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({selectedItems: this.selectedItems, customTexts: this.customTexts})
+                        body: JSON.stringify({
+                            selectedItems: this.selectedItems,
+                            customTexts: this.customTexts,
+                            watermarkFonts: this.watermarkFonts
+                        })
                     });
 
                     if (!response.ok) {

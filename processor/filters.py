@@ -4,7 +4,7 @@ from abc import ABC
 from typing import Tuple
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from core.util import get_exif
 from processor.core import ImageProcessor, PipelineContext, start_process, get_processor
@@ -410,14 +410,24 @@ class BottomCenterInfoWatermarkFilter(FilterProcessor):
         color = ctx.get("color", "white")
         time_color = ctx.get("time_color", color)
         parameter_color = ctx.get("parameter_color", color)
+        blend_mode = str(ctx.get("blend_mode", "normal") or "normal").lower()
+        location_opacity = self._opacity(ctx.get("location_opacity"), 255)
+        time_opacity = self._opacity(ctx.get("time_opacity"), 255)
+        parameter_opacity = self._opacity(ctx.get("parameter_opacity"), 255)
 
         text_items = []
         location_text = str(ctx.get("location_text", "") or "").strip()
         if location_text:
-            text_items.append(self._render_text(location_text, location_height, location_font_path, color, True))
+            text_items.append(self._apply_opacity(
+                self._render_text(location_text, location_height, location_font_path, color, True),
+                location_opacity,
+            ))
 
         time_text = str(ctx.get("time_text", "") or "").strip() or "-"
-        text_items.append(self._render_text(time_text, time_height, font_path, time_color, False))
+        text_items.append(self._apply_opacity(
+            self._render_text(time_text, time_height, font_path, time_color, False),
+            time_opacity,
+        ))
 
         parameter_values = [
             str(ctx.get("focal_text", "") or "-").strip() or "-",
@@ -425,8 +435,11 @@ class BottomCenterInfoWatermarkFilter(FilterProcessor):
             str(ctx.get("aperture_text", "") or "-").strip() or "-",
             str(ctx.get("iso_text", "") or "-").strip() or "-",
         ]
-        text_items.append(self._render_parameter_row(parameter_values, parameter_height, parameter_font_path,
-                                                     parameter_color, parameter_gap))
+        text_items.append(self._apply_opacity(
+            self._render_parameter_row(parameter_values, parameter_height, parameter_font_path, parameter_color,
+                                       parameter_gap),
+            parameter_opacity,
+        ))
 
         total_height = sum(item.height for item in text_items) + line_spacing * (len(text_items) - 1)
         start_y = max(0, img.height - bottom_offset - total_height)
@@ -435,7 +448,7 @@ class BottomCenterInfoWatermarkFilter(FilterProcessor):
         current_y = start_y
         for item in text_items:
             x = (img.width - item.width) // 2
-            canvas.paste(item, (x, current_y), mask=item)
+            canvas = self._blend_text(canvas, item, x, current_y, blend_mode)
             current_y += item.height + line_spacing
 
         ctx.update_buffer([canvas]).save_buffer(self.name()).success()
@@ -447,6 +460,35 @@ class BottomCenterInfoWatermarkFilter(FilterProcessor):
         except (TypeError, ValueError):
             return default
         return value if value > 0 else default
+
+    @staticmethod
+    def _opacity(value, default):
+        try:
+            value = int(float(value))
+        except (TypeError, ValueError):
+            return default
+        return max(0, min(255, value))
+
+    @staticmethod
+    def _apply_opacity(image, opacity):
+        if opacity >= 255:
+            return image
+        image = image.copy()
+        alpha = image.getchannel("A").point(lambda value: int(value * opacity / 255))
+        image.putalpha(alpha)
+        return image
+
+    @staticmethod
+    def _blend_text(canvas, text_layer, x, y, blend_mode):
+        if blend_mode != "screen":
+            canvas.paste(text_layer, (x, y), mask=text_layer)
+            return canvas
+
+        overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        overlay.paste(text_layer, (x, y), mask=text_layer)
+        screened_rgb = ImageChops.screen(canvas.convert("RGB"), overlay.convert("RGB"))
+        screened = Image.merge("RGBA", (*screened_rgb.split(), canvas.getchannel("A")))
+        return Image.composite(screened, canvas, overlay.getchannel("A"))
 
     @staticmethod
     def _render_text(text, height, font_path, color, is_bold=False):

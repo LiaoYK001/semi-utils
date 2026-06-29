@@ -9,9 +9,10 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import render_template, jsonify, request, send_file, Flask, Response, stream_with_context
+from PIL import Image
 
 from core import CONFIG_PATH
-from core.configs import load_config, load_project_info
+from core.configs import fonts_dir, load_config, load_project_info
 from core.logger import logger, init_from_config
 from core.util import (list_files, log_rt, get_exif, convert_heic_to_jpeg, get_template, get_template_content,
                        save_template, list_templates)
@@ -37,6 +38,10 @@ def index():
 def get_config():
     template_name = config.get('render', 'template_name')
     template = get_template_content(template_name)
+    fonts = sorted([
+        font.name for font in fonts_dir.iterdir()
+        if font.is_file() and font.suffix.lower() in {'.ttf', '.otf'}
+    ])
 
     return jsonify({
         'input_folder': config.get('DEFAULT', 'input_folder'),
@@ -46,6 +51,7 @@ def get_config():
         'template': template,
         'quality': config.get('DEFAULT', 'quality'),
         'templates': list_templates(),
+        'fonts': fonts,
     })
 
 
@@ -169,6 +175,7 @@ def handle_process():
     data = request.get_json()
     input_files = data['selectedItems']
     custom_texts = data.get('customTexts', {})
+    watermark_fonts = data.get('watermarkFonts', {})
     input_folder = config.get('DEFAULT', 'input_folder')
     output_folder = config.get('DEFAULT', 'output_folder')
 
@@ -205,13 +212,17 @@ def handle_process():
                 return False, True, None
 
             _input_path = Path(input_path)
+            with Image.open(input_path) as source_image:
+                image_size = {'width': source_image.width, 'height': source_image.height}
             # 开始处理
             context = {
                 'exif': get_exif(input_path),
+                'image_size': image_size,
                 'filename': _input_path.stem,
                 'file_dir': str(_input_path.parent.absolute()).replace('\\', '/'),
                 'file_path': str(_input_path).replace('\\', '/'),
                 'custom_text': custom_texts.get(input_path, ''),
+                'watermark_font': watermark_fonts.get(input_path, data.get('watermarkFont', '')),
                 'files': input_files
             }
             final_template = template.render(context)
@@ -369,12 +380,16 @@ def render_preview_api():
         template_name = data.get('templateName') or config.get('render', 'template_name')
         template = get_template(template_name)
         _input_path = Path(input_path)
+        with Image.open(input_path) as source_image:
+            image_size = {'width': source_image.width, 'height': source_image.height}
         context = {
             'exif': get_exif(input_path),
+            'image_size': image_size,
             'filename': _input_path.stem,
             'file_dir': str(_input_path.parent.absolute()).replace('\\', '/'),
             'file_path': str(_input_path).replace('\\', '/'),
             'custom_text': data.get('customText', ''),
+            'watermark_font': data.get('watermarkFont', ''),
             'files': [input_path],
         }
         final_template = template.render(context)
