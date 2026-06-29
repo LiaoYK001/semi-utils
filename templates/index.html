@@ -494,6 +494,29 @@
                     </div>
                 </div>
 
+                <div x-show="preview.url && preview.isFile" class="px-5 py-3 border-b border-slate-100 bg-white/80 space-y-2">
+                    <div class="flex gap-2">
+                        <input type="text"
+                               :value="currentCustomText"
+                               @input="setCurrentCustomText($event.target.value)"
+                               placeholder="地名/景点"
+                               class="flex-1 h-9 px-3 rounded-xl border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-sm bg-white">
+                        <button @click="renderPreview()"
+                                :disabled="loading.preview || !preview.path"
+                                class="h-9 px-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white text-xs font-medium shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span x-text="loading.preview ? '生成中...' : '刷新预览'"></span>
+                        </button>
+                    </div>
+                    <select :value="currentWatermarkFont"
+                            @change="setCurrentWatermarkFont($event.target.value)"
+                            class="h-9 w-full px-3 rounded-xl border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-sm bg-white">
+                        <option value="">默认字体</option>
+                        <template x-for="font in availableFonts" :key="font">
+                            <option :value="font" x-text="font"></option>
+                        </template>
+                    </select>
+                </div>
+
                 <div class="flex-1 bg-gradient-to-br from-slate-50 to-slate-100/50 flex items-center justify-center p-4 relative overflow-hidden">
                     <!-- Empty -->
                     <div x-show="!preview.url || !preview.isFile" class="text-center">
@@ -513,26 +536,6 @@
                          x-transition:enter-end="opacity-100 transform scale-100">
                         <div class="text-xs text-center text-slate-500 mb-2 font-mono truncate bg-white/90 backdrop-blur py-1.5 px-3 rounded-xl border border-slate-200 shadow-sm"
                              x-text="preview.name"></div>
-                        <div class="mb-2 flex gap-2">
-                            <input type="text"
-                                   :value="currentCustomText"
-                                   @input="setCurrentCustomText($event.target.value)"
-                                   placeholder="地名/景点"
-                                   class="flex-1 h-9 px-3 rounded-xl border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-sm">
-                            <button @click="renderPreview()"
-                                    :disabled="loading.preview || !preview.path"
-                                    class="h-9 px-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white text-xs font-medium shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                                <span x-text="loading.preview ? '生成中...' : '刷新预览'"></span>
-                            </button>
-                        </div>
-                        <select :value="currentWatermarkFont"
-                                @change="setCurrentWatermarkFont($event.target.value)"
-                                class="mb-2 h-9 w-full px-3 rounded-xl border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-sm bg-white">
-                            <option value="">默认字体</option>
-                            <template x-for="font in availableFonts" :key="font">
-                                <option :value="font" x-text="font"></option>
-                            </template>
-                        </select>
                         <div class="flex-1 relative rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
                             <img x-effect="if(preview.isFile) $el.src = preview.url"
                                  class="absolute inset-0 w-full h-full object-contain p-2">

@@ -31,7 +31,12 @@ api = Flask(__name__)
 
 @api.route('/')
 def index():
-    return render_template('index.html', title='Semi-Utils Pro', version=project_info['project']['version'])
+    response = api.make_response(render_template('index.html', title='Semi-Utils Pro',
+                                                version=project_info['project']['version']))
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 @api.route('/api/v1/config', methods=['GET'])
