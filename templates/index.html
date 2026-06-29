@@ -517,6 +517,169 @@
                     </select>
                 </div>
 
+                <!-- 底部居中信息水印 — 逐行设置面板（仅该模式可见） -->
+                <div x-show="isBottomCenterMode" x-transition class="px-5 py-3 border-b border-slate-100 bg-white/80 space-y-3">
+                    <div class="flex items-center justify-between cursor-pointer" @click="showBottomCenterSettings = !showBottomCenterSettings">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                            </svg>
+                            <span class="text-xs font-semibold text-slate-600">逐行设置</span>
+                            <span class="text-[10px] px-1.5 py-0.5 bg-violet-100 text-violet-600 rounded-full font-medium">独立模式</span>
+                        </div>
+                        <svg class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="showBottomCenterSettings ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </div>
+
+                    <div x-show="showBottomCenterSettings" x-transition class="space-y-3">
+
+                        <!-- ===== 地点行 ===== -->
+                        <fieldset class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+                            <legend class="text-[11px] font-semibold text-slate-500 px-1">📍 地点行</legend>
+                            <div class="grid grid-cols-2 gap-2">
+                                <!-- 透明度 -->
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">透明度 <span class="text-slate-300" x-text="'('+Math.round(bottomCenterSettings.location.opacity/2.55)+'%)'"></span></label>
+                                    <input type="range" min="0" max="255" step="1"
+                                           :value="bottomCenterSettings.location.opacity"
+                                           @input="updateBottomCenterSetting('location', 'opacity', $event.target.value)"
+                                           class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-500">
+                                </div>
+                                <!-- 字体 -->
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">字体</label>
+                                    <select :value="bottomCenterSettings.location.font"
+                                            @change="updateBottomCenterSetting('location', 'font', $event.target.value)"
+                                            class="w-full h-7 px-1.5 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                        <option value="">默认字体</option>
+                                        <template x-for="font in availableFonts" :key="font">
+                                            <option :value="font" x-text="font"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <!-- 字号 (vh%) -->
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">字号</label>
+                                    <div class="relative">
+                                        <input type="number" min="0.1" max="50" step="0.01"
+                                               :value="bottomCenterSettings.location.height"
+                                               @input="updateBottomCenterSetting('location', 'height', $event.target.value)"
+                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
+                                    </div>
+                                </div>
+                                <!-- 距底部 (vh%) -->
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">距底部</label>
+                                    <div class="relative">
+                                        <input type="number" min="0" max="100" step="0.01"
+                                               :value="bottomCenterSettings.location.bottom"
+                                               @input="updateBottomCenterSetting('location', 'bottom', $event.target.value)"
+                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- ===== 时间行 ===== -->
+                        <fieldset class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+                            <legend class="text-[11px] font-semibold text-slate-500 px-1">🕐 时间行</legend>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">透明度 <span class="text-slate-300" x-text="'('+Math.round(bottomCenterSettings.time.opacity/2.55)+'%)'"></span></label>
+                                    <input type="range" min="0" max="255" step="1"
+                                           :value="bottomCenterSettings.time.opacity"
+                                           @input="updateBottomCenterSetting('time', 'opacity', $event.target.value)"
+                                           class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-500">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">字体</label>
+                                    <select :value="bottomCenterSettings.time.font"
+                                            @change="updateBottomCenterSetting('time', 'font', $event.target.value)"
+                                            class="w-full h-7 px-1.5 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                        <option value="">默认字体</option>
+                                        <template x-for="font in availableFonts" :key="font">
+                                            <option :value="font" x-text="font"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">字号</label>
+                                    <div class="relative">
+                                        <input type="number" min="0.1" max="50" step="0.01"
+                                               :value="bottomCenterSettings.time.height"
+                                               @input="updateBottomCenterSetting('time', 'height', $event.target.value)"
+                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">距底部</label>
+                                    <div class="relative">
+                                        <input type="number" min="0" max="100" step="0.01"
+                                               :value="bottomCenterSettings.time.bottom"
+                                               @input="updateBottomCenterSetting('time', 'bottom', $event.target.value)"
+                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- ===== 参数行 ===== -->
+                        <fieldset class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+                            <legend class="text-[11px] font-semibold text-slate-500 px-1">📷 参数行（焦距/快门/光圈/ISO）</legend>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">透明度 <span class="text-slate-300" x-text="'('+Math.round(bottomCenterSettings.parameter.opacity/2.55)+'%)'"></span></label>
+                                    <input type="range" min="0" max="255" step="1"
+                                           :value="bottomCenterSettings.parameter.opacity"
+                                           @input="updateBottomCenterSetting('parameter', 'opacity', $event.target.value)"
+                                           class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-500">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">字体</label>
+                                    <select :value="bottomCenterSettings.parameter.font"
+                                            @change="updateBottomCenterSetting('parameter', 'font', $event.target.value)"
+                                            class="w-full h-7 px-1.5 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                        <option value="">默认字体</option>
+                                        <template x-for="font in availableFonts" :key="font">
+                                            <option :value="font" x-text="font"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">字号</label>
+                                    <div class="relative">
+                                        <input type="number" min="0.1" max="50" step="0.01"
+                                               :value="bottomCenterSettings.parameter.height"
+                                               @input="updateBottomCenterSetting('parameter', 'height', $event.target.value)"
+                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">距底部</label>
+                                    <div class="relative">
+                                        <input type="number" min="0" max="100" step="0.01"
+                                               :value="bottomCenterSettings.parameter.bottom"
+                                               @input="updateBottomCenterSetting('parameter', 'bottom', $event.target.value)"
+                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <!-- 应用提示 -->
+                        <p class="text-[10px] text-slate-400 text-center">
+                            修改后请点击 <strong class="text-violet-500">刷新预览</strong> 查看效果；确认无误后 <strong class="text-violet-500">保存配置</strong> 以持久化。
+                        </p>
+                    </div>
+                </div>
+
                 <div class="flex-1 bg-gradient-to-br from-slate-50 to-slate-100/50 flex items-center justify-center p-4 relative overflow-hidden">
                     <!-- Empty -->
                     <div x-show="!preview.url || !preview.isFile" class="text-center">
@@ -899,6 +1062,13 @@
             watermarkFonts: {},
             preview: {url: '', name: '', path: '', isFile: false},
             aceEditor: null,
+            // 底部居中信息水印 — 逐行设置
+            showBottomCenterSettings: true,
+            bottomCenterSettings: {
+                location: { opacity: 230, font: 'AlibabaPuHuiTi-2-45-Light.otf', height: 4.8, bottom: 19.2 },
+                time:     { opacity: 115, font: 'AlibabaPuHuiTi-2-45-Light.otf', height: 1.68, bottom: 13.6 },
+                parameter:{ opacity: 165, font: 'AlibabaPuHuiTi-2-45-Light.otf', height: 2.4, bottom: 8.8 },
+            },
             debug: {
                 collapsed: false,
                 logs: [],
@@ -968,12 +1138,97 @@
                 return this.isStatic && this.selectedItems.length > 0 && !this.progress.active;
             },
 
+            get isBottomCenterMode() {
+                return this.config.template_name === '底部居中信息水印';
+            },
+
             get currentCustomText() {
                 return this.preview.path ? (this.customTexts[this.preview.path] || '') : '';
             },
 
             get currentWatermarkFont() {
                 return this.preview.path ? (this.watermarkFonts[this.preview.path] || '') : '';
+            },
+
+            // ---- 底部居中水印逐行设置 ----
+
+            /** 从 Jinja2 vh() 表达式中提取百分比数值 */
+            extractVhPercent(value) {
+                if (typeof value === 'number') return value;
+                const s = String(value || '');
+                const m = s.match(/vh\(\s*([\d.]+)\s*\)/);
+                return m ? parseFloat(m[1]) : (parseFloat(s) || 0);
+            },
+
+            /** 从 Jinja2 default() 过滤器中提取字体名，或直接返回字符串 */
+            extractFontName(value) {
+                if (!value) return '';
+                const s = String(value);
+                const m = s.match(/default\s*\(\s*'([^']+)'\s*\)/);
+                return m ? m[1] : s;
+            },
+
+            /** 从 ACE 编辑器 JSON 中解析逐行设置到 bottomCenterSettings */
+            parseBottomCenterSettings() {
+                try {
+                    const tpl = JSON.parse(this.aceEditor.getValue());
+                    if (!Array.isArray(tpl) || !tpl.length) return;
+                    const node = tpl[0];
+                    if (node.processor_name !== 'bottom_center_info_watermark') return;
+
+                    const loc = this.bottomCenterSettings.location;
+                    loc.opacity = parseInt(node.location_opacity) || 230;
+                    loc.font    = this.extractFontName(node.location_font_path || node.font_path);
+                    loc.height  = this.extractVhPercent(node.location_height);
+                    loc.bottom  = this.extractVhPercent(node.location_bottom || node.bottom_offset);
+
+                    const tim = this.bottomCenterSettings.time;
+                    tim.opacity = parseInt(node.time_opacity) || 115;
+                    tim.font    = this.extractFontName(node.font_path);
+                    tim.height  = this.extractVhPercent(node.time_height);
+                    tim.bottom  = this.extractVhPercent(node.time_bottom || node.bottom_offset);
+
+                    const par = this.bottomCenterSettings.parameter;
+                    par.opacity = parseInt(node.parameter_opacity) || 165;
+                    par.font    = this.extractFontName(node.parameter_font_path || node.font_path);
+                    par.height  = this.extractVhPercent(node.parameter_height);
+                    par.bottom  = this.extractVhPercent(node.parameter_bottom || node.bottom_offset);
+                } catch (_) { /* 忽略解析错误 */ }
+            },
+
+            /** 将逐行设置写回 ACE 编辑器 JSON */
+            applyBottomCenterSetting(line, field, value) {
+                try {
+                    const tpl = JSON.parse(this.aceEditor.getValue());
+                    if (!Array.isArray(tpl) || !tpl.length) return;
+                    const node = tpl[0];
+                    if (node.processor_name !== 'bottom_center_info_watermark') return;
+
+                    const keyMap = {
+                        location:  { opacity: 'location_opacity',  font: 'location_font_path', height: 'location_height',  bottom: 'location_bottom' },
+                        time:      { opacity: 'time_opacity',      font: 'font_path',           height: 'time_height',      bottom: 'time_bottom' },
+                        parameter: { opacity: 'parameter_opacity', font: 'parameter_font_path', height: 'parameter_height', bottom: 'parameter_bottom' },
+                    };
+                    const jsonKey = keyMap[line]?.[field];
+                    if (!jsonKey) return;
+
+                    if (field === 'opacity') {
+                        node[jsonKey] = parseInt(value) || 0;
+                    } else if (field === 'font') {
+                        node[jsonKey] = value || node.font_path || "AlibabaPuHuiTi-2-45-Light.otf";
+                    } else if (field === 'height' || field === 'bottom') {
+                        node[jsonKey] = `{{vh(${parseFloat(value) || 0})}}`;
+                    }
+
+                    this.aceEditor.setValue(JSON.stringify(tpl, null, 2), -1);
+                    this.config.template = this.aceEditor.getValue();
+                } catch (_) { /* 忽略 */ }
+            },
+
+            /** UI 控件变更入口 */
+            updateBottomCenterSetting(line, field, value) {
+                this.bottomCenterSettings[line][field] = (field === 'font') ? value : parseFloat(value) || 0;
+                this.applyBottomCenterSetting(line, field, value);
             },
 
             async init() {
@@ -1147,6 +1402,7 @@
                             this.availableFonts = data.fonts;
                         }
                         this.addDebugLog('info', `配置加载完成: template=${this.config.template_name}, templates=${this.availableTemplates.length}, fonts=${this.availableFonts.length}`);
+                        this.parseBottomCenterSettings();
                     }
                 } catch (e) {
                     this.addDebugLog('error', '获取配置失败: ' + e.message);
@@ -1172,6 +1428,7 @@
                     this.config.template_name = templateName;
                     this.resetPreviewImage();
                     this.addDebugLog('info', `切换模板: ${templateName}`);
+                    this.parseBottomCenterSettings();
                     this.toast(`已切换到模板: ${templateName}`, 'success');
                 } catch (e) {
                     this.addDebugLog('error', '切换模板失败: ' + e.message);

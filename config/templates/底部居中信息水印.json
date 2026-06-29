@@ -22,6 +22,9 @@
     "parameter_height": "{{vh(2.4)}}",
     "line_spacing": "{{vh(0.65)}}",
     "bottom_offset": "{{vh(4.6)}}",
+    "location_bottom": "{{vh(19.2)}}",
+    "time_bottom": "{{vh(13.6)}}",
+    "parameter_bottom": "{{vh(8.8)}}",
     "parameter_gap": "{{vw(8.8)}}"
   }
 ]

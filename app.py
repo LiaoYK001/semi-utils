@@ -86,7 +86,24 @@ def save_config():
 
         # 保存模板文件
         if 'template' in data and 'template_name' in data:
-            save_template(data['template_name'], data['template'])
+            template_name = data['template_name']
+            template_content = data['template']
+
+            # ---- 底部居中信息水印互斥校验 ----
+            if template_name == '底部居中信息水印':
+                try:
+                    tpl = json.loads(template_content) if isinstance(template_content, str) else template_content
+                    if isinstance(tpl, list):
+                        processors = [node.get('processor_name', '') for node in tpl if isinstance(node, dict)]
+                        invalid = [p for p in processors if p != 'bottom_center_info_watermark']
+                        if invalid:
+                            return jsonify({
+                                'error': f'「底部居中信息水印」为独立模式，不允许混用其他处理器: {", ".join(invalid)}'
+                            }), 400
+                except (json.JSONDecodeError, TypeError):
+                    pass  # JSON 格式错误由前端校验处理
+
+            save_template(template_name, template_content)
 
         return jsonify({'message': 'Config saved successfully'}), 200
 

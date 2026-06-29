@@ -392,6 +392,8 @@ class WatermarkWithTimestampFilter(FilterProcessor):
 
 
 class BottomCenterInfoWatermarkFilter(FilterProcessor):
+    """底部居中信息水印 — 独立模式，不应与其他水印 Filter 混用。"""
+
     def process(self, ctx: PipelineContext):
         img = ctx.get_buffer()[0]
         if img.mode != 'RGBA':
@@ -415,18 +417,38 @@ class BottomCenterInfoWatermarkFilter(FilterProcessor):
         time_opacity = self._opacity(ctx.get("time_opacity"), 255)
         parameter_opacity = self._opacity(ctx.get("parameter_opacity"), 255)
 
-        text_items = []
+        # ---- 逐行底部距离（新增） ----
+        # 若任意一行显式提供了专属 _bottom，则启用逐行独立定位模式
+        has_per_line_bottom = any(
+            ctx.get(k) is not None
+            for k in ("location_bottom", "time_bottom", "parameter_bottom")
+        )
+        location_bottom = self._positive(ctx.get("location_bottom"), bottom_offset)
+        time_bottom = self._positive(ctx.get("time_bottom"), bottom_offset)
+        parameter_bottom = self._positive(ctx.get("parameter_bottom"), bottom_offset)
+
+        # ---- 构建各文本图层及其对应的底部距离 ----
+        positioned_items = []  # [(layer_image, bottom_px, label), ...]
+
         location_text = str(ctx.get("location_text", "") or "").strip()
         if location_text:
-            text_items.append(self._apply_opacity(
-                self._render_text(location_text, location_height, location_font_path, color, True),
-                location_opacity,
+            positioned_items.append((
+                self._apply_opacity(
+                    self._render_text(location_text, location_height, location_font_path, color, True),
+                    location_opacity,
+                ),
+                location_bottom,
+                "location",
             ))
 
         time_text = str(ctx.get("time_text", "") or "").strip() or "-"
-        text_items.append(self._apply_opacity(
-            self._render_text(time_text, time_height, font_path, time_color, False),
-            time_opacity,
+        positioned_items.append((
+            self._apply_opacity(
+                self._render_text(time_text, time_height, font_path, time_color, False),
+                time_opacity,
+            ),
+            time_bottom,
+            "time",
         ))
 
         parameter_values = [
@@ -435,21 +457,34 @@ class BottomCenterInfoWatermarkFilter(FilterProcessor):
             str(ctx.get("aperture_text", "") or "-").strip() or "-",
             str(ctx.get("iso_text", "") or "-").strip() or "-",
         ]
-        text_items.append(self._apply_opacity(
-            self._render_parameter_row(parameter_values, parameter_height, parameter_font_path, parameter_color,
-                                       parameter_gap),
-            parameter_opacity,
+        positioned_items.append((
+            self._apply_opacity(
+                self._render_parameter_row(parameter_values, parameter_height, parameter_font_path,
+                                           parameter_color, parameter_gap),
+                parameter_opacity,
+            ),
+            parameter_bottom,
+            "parameter",
         ))
 
-        total_height = sum(item.height for item in text_items) + line_spacing * (len(text_items) - 1)
-        start_y = max(0, img.height - bottom_offset - total_height)
-
+        # ---- 定位并合成到画布 ----
         canvas = img.copy()
-        current_y = start_y
-        for item in text_items:
-            x = (img.width - item.width) // 2
-            canvas = self._blend_text(canvas, item, x, current_y, blend_mode)
-            current_y += item.height + line_spacing
+
+        if has_per_line_bottom:
+            # 逐行独立定位：每行以各自底部距离从图片底边向上定位
+            for item_img, line_bottom, _label in positioned_items:
+                x = (img.width - item_img.width) // 2
+                y = max(0, img.height - line_bottom - item_img.height)
+                canvas = self._blend_text(canvas, item_img, x, y, blend_mode)
+        else:
+            # 兼容旧版：所有行共享一个 bottom_offset，从上到下顺序排列
+            total_height = sum(item_img.height for item_img, _, _ in positioned_items) + line_spacing * (len(positioned_items) - 1)
+            start_y = max(0, img.height - bottom_offset - total_height)
+            current_y = start_y
+            for item_img, _, _label in positioned_items:
+                x = (img.width - item_img.width) // 2
+                canvas = self._blend_text(canvas, item_img, x, current_y, blend_mode)
+                current_y += item_img.height + line_spacing
 
         ctx.update_buffer([canvas]).save_buffer(self.name()).success()
 
