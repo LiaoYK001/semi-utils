@@ -34,30 +34,99 @@ def get_exif(path) -> dict:
     :return: exif信息
     """
     exif_dict = {}
+
+    # 优先使用 exiftool，提取更完整
+    if EXIFTOOL_PATH and Path(str(EXIFTOOL_PATH)).exists():
+        try:
+            output_bytes = subprocess.check_output(
+                [str(EXIFTOOL_PATH), '-d', '%Y-%m-%d %H:%M:%S%3f%z', path],
+                stderr=subprocess.DEVNULL
+            )
+            output = output_bytes.decode('utf-8', errors='ignore')
+
+            for line in output.splitlines():
+                kv_pair = line.split(':', 1)
+                if len(kv_pair) < 2:
+                    continue
+                key = kv_pair[0].strip()
+                value = kv_pair[1].strip()
+                key = re.sub(r'\s+', '', key)
+                key = re.sub(r'/', '', key)
+                value_clean = ''.join(c for c in value if ord(c) < 128)
+                exif_dict[key] = value_clean
+
+            if exif_dict:
+                return exif_dict
+        except (FileNotFoundError, subprocess.CalledProcessError, OSError) as e:
+            logger.warning(f'exiftool 提取失败，回退到 Pillow: {e}')
+
+    # 兜底：使用 Pillow 提取 EXIF
     try:
-        output_bytes = subprocess.check_output([EXIFTOOL_PATH, '-d', '%Y-%m-%d %H:%M:%S%3f%z', path])
-        output = output_bytes.decode('utf-8', errors='ignore')
+        img = Image.open(path)
+        raw_exif = img._getexif() or {}
+        # EXIF 标签 ID → 名称映射（与 exiftool 输出风格对齐，去掉空格和斜杠）
+        EXIF_TAG_MAP = {
+            271: 'Make',
+            272: 'CameraModelName',
+            33432: 'Copyright',
+            34855: 'ISO',
+            36867: 'DateTimeOriginal',
+            36868: 'CreateDate',
+            37377: 'ShutterSpeedValue',
+            37378: 'ApertureValue',
+            37380: 'ExposureCompensation',
+            37381: 'FNumber',
+            37383: 'MeteringMode',
+            37385: 'Flash',
+            37386: 'FocalLength',
+            37520: 'SubSecTimeOriginal',
+            37521: 'SubSecTimeDigitized',
+            41989: 'FocalLengthIn35mmFormat',
+            42036: 'LensModel',
+        }
+        for tag_id, value in raw_exif.items():
+            tag_name = EXIF_TAG_MAP.get(tag_id)
+            if tag_name:
+                # 处理 IFDRational 等类型
+                if hasattr(value, 'numerator') and hasattr(value, 'denominator'):
+                    if value.denominator != 0:
+                        value = round(value.numerator / value.denominator, 4)
+                    else:
+                        value = 0
+                elif isinstance(value, bytes):
+                    value = value.decode('utf-8', errors='ignore').strip('\x00')
+                value_clean = str(value)
+                # 过滤非 ASCII 字符
+                value_clean = ''.join(c for c in value_clean if ord(c) < 128)
+                exif_dict[tag_name] = value_clean
 
-        lines = output.splitlines()
-        utf8_lines = [line for line in lines]
+        # 格式化 ShutterSpeedValue（APEX → 秒）
+        if 'ShutterSpeedValue' in exif_dict and 'ShutterSpeed' not in exif_dict:
+            try:
+                ssv = float(exif_dict['ShutterSpeedValue'])
+                import math
+                exposure = math.pow(2, -ssv)
+                if exposure >= 1:
+                    exif_dict['ShutterSpeed'] = f'{exposure:.1f}'
+                else:
+                    exif_dict['ShutterSpeed'] = f'1/{round(1/exposure)}'
+            except (ValueError, TypeError):
+                pass
 
-        for line in utf8_lines:
-            # 将每一行按冒号分隔成键值对
-            kv_pair = line.split(':')
-            if len(kv_pair) < 2:
-                continue
-            key = kv_pair[0].strip()
-            value = ':'.join(kv_pair[1:]).strip()
-            # 将键中的空格移除
-            key = re.sub(r'\s+', '', key)
-            key = re.sub(r'/', '', key)
-            # 将键值对添加到字典中
-            exif_dict[key] = value
-        for key, value in exif_dict.items():
-            # 过滤非 ASCII 字符
-            value_clean = ''.join(c for c in value if ord(c) < 128)
-            # 将处理后的值更新到 exif_dict 中
-            exif_dict[key] = value_clean
+        # 格式化 ApertureValue（APEX → f/值）
+        if 'ApertureValue' in exif_dict:
+            try:
+                av = float(exif_dict['ApertureValue'])
+                import math
+                f_number = round(math.pow(2, av / 2), 1)
+                exif_dict['ApertureValue'] = str(f_number)
+            except (ValueError, TypeError):
+                pass
+
+        # 格式化 FocalLength → 带 mm
+        if 'FocalLength' in exif_dict and 'FocalLengthIn35mmFormat' not in exif_dict:
+            exif_dict['FocalLengthIn35mmFormat'] = exif_dict['FocalLength']
+
     except Exception as e:
         logger.error(f'get_exif error: {path} : {e}')
 
