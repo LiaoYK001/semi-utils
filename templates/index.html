@@ -513,6 +513,18 @@
                          x-transition:enter-end="opacity-100 transform scale-100">
                         <div class="text-xs text-center text-slate-500 mb-2 font-mono truncate bg-white/90 backdrop-blur py-1.5 px-3 rounded-xl border border-slate-200 shadow-sm"
                              x-text="preview.name"></div>
+                        <div class="mb-2 flex gap-2">
+                            <input type="text"
+                                   :value="currentCustomText"
+                                   @input="setCurrentCustomText($event.target.value)"
+                                   placeholder="地名/景点"
+                                   class="flex-1 h-9 px-3 rounded-xl border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-sm">
+                            <button @click="renderPreview()"
+                                    :disabled="loading.preview || !preview.path"
+                                    class="h-9 px-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white text-xs font-medium shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                                <span x-text="loading.preview ? '生成中...' : '刷新预览'"></span>
+                            </button>
+                        </div>
                         <div class="flex-1 relative rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
                             <img x-effect="if(preview.isFile) $el.src = preview.url"
                                  class="absolute inset-0 w-full h-full object-contain p-2">
@@ -777,8 +789,13 @@
                 if (this.isFile) {
                     // 文件：显示预览
                     const app = window.Alpine.store('app');
+                    if (app.preview.renderedObjectUrl) {
+                        URL.revokeObjectURL(app.preview.renderedObjectUrl);
+                    }
                     app.preview.url = `/api/v1/file?path=${encodeURIComponent(this.value)}`;
                     app.preview.name = this.label;
+                    app.preview.path = this.value;
+                    app.preview.renderedObjectUrl = '';
                     app.preview.isFile = true;
                 } else if (this.hasChildren) {
                     // 文件夹：切换折叠状态
@@ -809,14 +826,15 @@
     function app() {
         return {
             isStatic: true,
-            loading: {files: false, process: false},
+            loading: {files: false, process: false, preview: false},
             config: {input_folder: '', output_folder: '', template: '{}', template_name: '', quality: 100, override_existed: false},
             availableTemplates: [],
             inputTreeData: [],
             outputTreeData: [],
             treeKey: 0,
             selectedItems: [],
-            preview: {url: '', name: '', isFile: false},
+            customTexts: {},
+            preview: {url: '', name: '', path: '', isFile: false},
             aceEditor: null,
             progress: {
                 active: false,
@@ -878,6 +896,10 @@
 
             get canStart() {
                 return this.isStatic && this.selectedItems.length > 0 && !this.progress.active;
+            },
+
+            get currentCustomText() {
+                return this.preview.path ? (this.customTexts[this.preview.path] || '') : '';
             },
 
             async init() {
@@ -968,6 +990,7 @@
                     this.aceEditor.setValue(tplStr || '{}', -1);
                     this.config.template = tplStr;
                     this.config.template_name = templateName;
+                    this.resetPreviewImage();
                     this.toast(`已切换到模板: ${templateName}`, 'success');
                 } catch (e) {
                     this.toast("切换模板失败: " + e.message, 'error');
@@ -1149,6 +1172,59 @@
                 this.selectedItems = [...new Set([...this.selectedItems, ...allFiles])];
             },
 
+            resetPreviewImage() {
+                if (!this.preview.path) return;
+                if (this.preview.renderedObjectUrl) {
+                    URL.revokeObjectURL(this.preview.renderedObjectUrl);
+                }
+                this.preview.renderedObjectUrl = '';
+                this.preview.url = `/api/v1/file?path=${encodeURIComponent(this.preview.path)}`;
+            },
+
+            setCurrentCustomText(value) {
+                if (!this.preview.path) return;
+                if (value) {
+                    this.customTexts[this.preview.path] = value;
+                } else {
+                    delete this.customTexts[this.preview.path];
+                }
+                this.resetPreviewImage();
+            },
+
+            async renderPreview() {
+                if (!this.preview.path) return;
+                this.loading.preview = true;
+                try {
+                    const response = await fetch('/api/v1/preview/render', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            path: this.preview.path,
+                            customText: this.currentCustomText,
+                            templateName: this.config.template_name
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error(text || `HTTP ${response.status}`);
+                    }
+
+                    const blob = await response.blob();
+                    if (this.preview.renderedObjectUrl) {
+                        URL.revokeObjectURL(this.preview.renderedObjectUrl);
+                    }
+                    const objectUrl = URL.createObjectURL(blob);
+                    this.preview.renderedObjectUrl = objectUrl;
+                    this.preview.url = objectUrl;
+                    this.toast('预览已刷新', 'success');
+                } catch (e) {
+                    this.toast('预览生成失败: ' + e.message, 'error');
+                } finally {
+                    this.loading.preview = false;
+                }
+            },
+
             async startProcess() {
                 // 重置进度状态
                 this.progress.active = true;
@@ -1167,7 +1243,7 @@
                     const response = await fetch('/api/v1/start_process', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({selectedItems: this.selectedItems})
+                        body: JSON.stringify({selectedItems: this.selectedItems, customTexts: this.customTexts})
                     });
 
                     if (!response.ok) {

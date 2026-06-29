@@ -1,0 +1,23 @@
+[
+  {
+    "processor_name": "bottom_center_info_watermark",
+    "location_text": "{{ custom_text|default('') }}",
+    "time_text": "{{ format_photo_time(exif) }}",
+    "focal_text": "{{ format_focal_length(exif) }}",
+    "shutter_text": "{{ format_shutter_speed(exif) }}",
+    "aperture_text": "{{ format_aperture(exif) }}",
+    "iso_text": "{{ format_iso(exif) }}",
+    "font_path": "AlibabaPuHuiTi-2-45-Light.otf",
+    "location_font_path": "AlibabaPuHuiTi-2-45-Light.otf",
+    "parameter_font_path": "Roboto-Medium.ttf",
+    "color": "(255,255,255,225)",
+    "time_color": "(255,255,255,150)",
+    "parameter_color": "(255,255,255,210)",
+    "location_height": "{{vh(4.7)}}",
+    "time_height": "{{vh(2.2)}}",
+    "parameter_height": "{{vh(3.1)}}",
+    "line_spacing": "{{vh(0.8)}}",
+    "bottom_offset": "{{vh(4.8)}}",
+    "parameter_gap": "{{vw(8.5)}}"
+  }
+]

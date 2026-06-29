@@ -391,6 +391,92 @@ class WatermarkWithTimestampFilter(FilterProcessor):
         return "watermark_with_timestamp"
 
 
+class BottomCenterInfoWatermarkFilter(FilterProcessor):
+    def process(self, ctx: PipelineContext):
+        img = ctx.get_buffer()[0]
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+
+        base_height = img.height
+        location_height = self._positive(ctx.get("location_height"), max(1, int(base_height * .045)))
+        time_height = self._positive(ctx.get("time_height"), max(1, int(base_height * .023)))
+        parameter_height = self._positive(ctx.get("parameter_height"), max(1, int(base_height * .036)))
+        line_spacing = self._positive(ctx.get("line_spacing"), max(1, int(base_height * .006)))
+        bottom_offset = self._positive(ctx.get("bottom_offset"), max(1, int(base_height * .045)))
+        parameter_gap = self._positive(ctx.get("parameter_gap"), max(1, int(img.width * .09)))
+        font_path = ctx.get("font_path")
+        location_font_path = ctx.get("location_font_path", font_path)
+        parameter_font_path = ctx.get("parameter_font_path", font_path)
+        color = ctx.get("color", "white")
+        time_color = ctx.get("time_color", color)
+        parameter_color = ctx.get("parameter_color", color)
+
+        text_items = []
+        location_text = str(ctx.get("location_text", "") or "").strip()
+        if location_text:
+            text_items.append(self._render_text(location_text, location_height, location_font_path, color, True))
+
+        time_text = str(ctx.get("time_text", "") or "").strip() or "-"
+        text_items.append(self._render_text(time_text, time_height, font_path, time_color, False))
+
+        parameter_values = [
+            str(ctx.get("focal_text", "") or "-").strip() or "-",
+            str(ctx.get("shutter_text", "") or "-").strip() or "-",
+            str(ctx.get("aperture_text", "") or "-").strip() or "-",
+            str(ctx.get("iso_text", "") or "-").strip() or "-",
+        ]
+        text_items.append(self._render_parameter_row(parameter_values, parameter_height, parameter_font_path,
+                                                     parameter_color, parameter_gap))
+
+        total_height = sum(item.height for item in text_items) + line_spacing * (len(text_items) - 1)
+        start_y = max(0, img.height - bottom_offset - total_height)
+
+        canvas = img.copy()
+        current_y = start_y
+        for item in text_items:
+            x = (img.width - item.width) // 2
+            canvas.paste(item, (x, current_y), mask=item)
+            current_y += item.height + line_spacing
+
+        ctx.update_buffer([canvas]).save_buffer(self.name()).success()
+
+    @staticmethod
+    def _positive(value, default):
+        try:
+            value = int(float(value))
+        except (TypeError, ValueError):
+            return default
+        return value if value > 0 else default
+
+    @staticmethod
+    def _render_text(text, height, font_path, color, is_bold=False):
+        from processor.generators import RichTextGenerator, TextSegment
+
+        return RichTextGenerator.generate(TextSegment(
+            text=text,
+            font_path=font_path,
+            height=height,
+            is_bold=is_bold,
+            color=color,
+            trim=True,
+        ))
+
+    def _render_parameter_row(self, values, height, font_path, color, gap):
+        items = [self._render_text(value, height, font_path, color, False) for value in values]
+        total_width = sum(item.width for item in items) + gap * (len(items) - 1)
+        max_height = max(item.height for item in items)
+        canvas = Image.new("RGBA", (total_width, max_height), (0, 0, 0, 0))
+        current_x = 0
+        for item in items:
+            y = (max_height - item.height) // 2
+            canvas.paste(item, (current_x, y), mask=item)
+            current_x += item.width + gap
+        return canvas
+
+    def name(self) -> str:
+        return "bottom_center_info_watermark"
+
+
 class RoundedCornerFilter(FilterProcessor):
     def process(self, ctx: PipelineContext):
         # CSS风格: border-radius, 单位px

@@ -13,7 +13,16 @@ from PIL import Image
 from jinja2 import Template
 
 from core.configs import templates_dir
-from core.jinja2renders import vh, vw, auto_logo
+from core.jinja2renders import (
+    auto_logo,
+    format_aperture,
+    format_focal_length,
+    format_iso,
+    format_photo_time,
+    format_shutter_speed,
+    vh,
+    vw,
+)
 from core.logger import logger
 
 if platform.system() == 'Windows':
@@ -253,6 +262,11 @@ def get_template(template_name: str) -> Template:
     template.globals['vh'] = vh
     template.globals['vw'] = vw
     template.globals['auto_logo'] = auto_logo
+    template.globals['format_photo_time'] = format_photo_time
+    template.globals['format_focal_length'] = format_focal_length
+    template.globals['format_shutter_speed'] = format_shutter_speed
+    template.globals['format_aperture'] = format_aperture
+    template.globals['format_iso'] = format_iso
     return template
 
 

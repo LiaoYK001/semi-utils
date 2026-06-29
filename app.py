@@ -3,6 +3,8 @@ import os
 import threading
 import webbrowser
 import queue
+import time
+from io import BytesIO
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -166,6 +168,7 @@ def handle_process():
 
     data = request.get_json()
     input_files = data['selectedItems']
+    custom_texts = data.get('customTexts', {})
     input_folder = config.get('DEFAULT', 'input_folder')
     output_folder = config.get('DEFAULT', 'output_folder')
 
@@ -208,6 +211,7 @@ def handle_process():
                 'filename': _input_path.stem,
                 'file_dir': str(_input_path.parent.absolute()).replace('\\', '/'),
                 'file_path': str(_input_path).replace('\\', '/'),
+                'custom_text': custom_texts.get(input_path, ''),
                 'files': input_files
             }
             final_template = template.render(context)
@@ -347,6 +351,49 @@ def handle_process():
             'Connection': 'keep-alive',
         }
     )
+
+
+@api.route('/api/v1/preview/render', methods=['POST'])
+def render_preview_api():
+    try:
+        data = request.get_json()
+        if not data or not data.get('path'):
+            return jsonify({'error': 'Missing path'}), 400
+
+        input_path = data['path']
+        if not os.path.exists(input_path):
+            return jsonify({'error': 'File not found'}), 404
+        if os.path.isdir(input_path):
+            return jsonify({'error': 'Path is a directory, not a file'}), 400
+
+        template_name = data.get('templateName') or config.get('render', 'template_name')
+        template = get_template(template_name)
+        _input_path = Path(input_path)
+        context = {
+            'exif': get_exif(input_path),
+            'filename': _input_path.stem,
+            'file_dir': str(_input_path.parent.absolute()).replace('\\', '/'),
+            'file_path': str(_input_path).replace('\\', '/'),
+            'custom_text': data.get('customText', ''),
+            'files': [input_path],
+        }
+        final_template = template.render(context)
+        image = start_process(json.loads(final_template), input_path, output_path=None)
+        if image.mode in ('RGBA', 'P', 'LA'):
+            image = image.convert('RGB')
+
+        buffer = BytesIO()
+        image.save(buffer, format='JPEG', quality=config.getint('DEFAULT', 'quality'),
+                   subsampling=config.getint('DEFAULT', 'subsampling'))
+        buffer.seek(0)
+        response = send_file(buffer, mimetype='image/jpeg', download_name=f'preview-{int(time.time())}.jpg')
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
+    except Exception as e:
+        logger.error(f"Preview render failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @api.route('/api/v1/template/<template_name>', methods=['GET'])
