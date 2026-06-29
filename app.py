@@ -178,10 +178,19 @@ def handle_process():
             return False, False, f"文件不存在: {input_path}"
 
         try:
+            # 规范化路径，解决 UNC 路径与映射驱动器路径不一致的问题
+            _input_path = Path(input_path).resolve()
+            _input_folder = Path(input_folder).resolve()
+            _output_folder = Path(output_folder).resolve()
+
             # 获取 input_path 相对 input_folder 的位置
-            relative_path = os.path.relpath(input_path, input_folder)
+            try:
+                relative_path = str(_input_path.relative_to(_input_folder))
+            except ValueError:
+                # 如果路径不在同一棵目录树下（如跨盘符），回退为仅用文件名
+                relative_path = _input_path.name
             # 基于 output_folder 组装出输出路径 output_path
-            output_path = os.path.join(output_folder, relative_path)
+            output_path = str(_output_folder / relative_path)
 
             # 如果路径不存在, 那么递归创建文件夹
             output_dir = os.path.dirname(output_path)
