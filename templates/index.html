@@ -1217,7 +1217,7 @@
                     } else if (field === 'font') {
                         node[jsonKey] = value || node.font_path || "AlibabaPuHuiTi-2-45-Light.otf";
                     } else if (field === 'height' || field === 'bottom') {
-                        node[jsonKey] = `{{vh(${parseFloat(value) || 0})}}`;
+                        node[jsonKey] = String.fromCharCode(123,123) + 'vh(' + (parseFloat(value) || 0) + ')' + String.fromCharCode(125,125);
                     }
 
                     this.aceEditor.setValue(JSON.stringify(tpl, null, 2), -1);
