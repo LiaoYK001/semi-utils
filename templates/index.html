@@ -637,6 +637,53 @@
     </div>
 </main>
 
+<section class="shrink-0 border-t border-slate-200 bg-slate-950 text-slate-100"
+         :class="debug.collapsed ? 'h-10' : 'h-48'">
+    <div class="h-10 px-4 flex items-center justify-between border-b border-slate-800">
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
+                </svg>
+                <span class="text-xs font-semibold">调试日志</span>
+            </div>
+            <span class="text-[11px] text-slate-400" x-text="`${debug.logs.length} 条`"></span>
+            <span x-show="debug.lastError"
+                  class="text-[11px] px-2 py-0.5 rounded-full bg-danger-500/20 text-danger-200"
+                  x-text="debug.lastError"></span>
+        </div>
+        <div class="flex items-center gap-2">
+            <button @click="copyDebugLogs()"
+                    class="h-7 px-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-[11px] text-slate-200 transition-all">
+                复制
+            </button>
+            <button @click="clearDebugLogs()"
+                    class="h-7 px-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-[11px] text-slate-200 transition-all">
+                清空
+            </button>
+            <button @click="debug.collapsed = !debug.collapsed"
+                    class="h-7 px-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-[11px] text-slate-200 transition-all"
+                    x-text="debug.collapsed ? '展开' : '收起'"></button>
+        </div>
+    </div>
+    <div x-show="!debug.collapsed"
+         x-ref="debugLogList"
+         class="h-[calc(12rem-2.5rem)] overflow-y-auto px-4 py-2 font-mono text-[11px] leading-relaxed">
+        <template x-if="debug.logs.length === 0">
+            <div class="text-slate-500">暂无日志</div>
+        </template>
+        <template x-for="entry in debug.logs" :key="entry.id">
+            <div class="grid grid-cols-[5.5rem_5.5rem_1fr] gap-2 border-b border-slate-900/80 py-0.5">
+                <span class="text-slate-500" x-text="entry.time"></span>
+                <span class="font-semibold"
+                      :class="debugLevelClass(entry.level)"
+                      x-text="entry.level"></span>
+                <span class="whitespace-pre-wrap break-words text-slate-200" x-text="entry.message"></span>
+            </div>
+        </template>
+    </div>
+</section>
+
 <!-- 模板名称输入模态框 -->
 <div x-show="modal && modal.show"
      x-transition:enter="transition ease-out duration-200"
@@ -808,6 +855,9 @@
                     app.preview.path = this.value;
                     app.preview.renderedObjectUrl = '';
                     app.preview.isFile = true;
+                    if (app.addDebugLog) {
+                        app.addDebugLog('info', `预览文件: ${this.label} -> ${this.value}`);
+                    }
                 } else if (this.hasChildren) {
                     // 文件夹：切换折叠状态
                     this.toggleFolder();
@@ -849,6 +899,13 @@
             watermarkFonts: {},
             preview: {url: '', name: '', path: '', isFile: false},
             aceEditor: null,
+            debug: {
+                collapsed: false,
+                logs: [],
+                nextId: 1,
+                maxEntries: 300,
+                lastError: ''
+            },
             progress: {
                 active: false,
                 complete: false,
@@ -921,6 +978,8 @@
 
             async init() {
                 Alpine.store('app', this);
+                this.installDebugHooks();
+                this.addDebugLog('info', '应用初始化');
                 this.initEditor();
 
                 this.toast = (msg, type = 'info') => {
@@ -942,6 +1001,101 @@
 
                 await this.fetchConfig();
                 await this.fetchFiles();
+            },
+
+            installDebugHooks() {
+                if (window.__semiUtilsDebugHooksInstalled) return;
+                window.__semiUtilsDebugHooksInstalled = true;
+
+                ['log', 'warn', 'error'].forEach((level) => {
+                    const original = console[level].bind(console);
+                    console[level] = (...args) => {
+                        original(...args);
+                        const app = Alpine.store('app');
+                        if (app && app.addDebugLog) {
+                            app.addDebugLog(level, args.map(arg => app.formatDebugArg(arg)).join(' '));
+                        }
+                    };
+                });
+
+                window.addEventListener('error', (event) => {
+                    const app = Alpine.store('app');
+                    if (app && app.addDebugLog) {
+                        app.addDebugLog('error', `${event.message} @ ${event.filename}:${event.lineno}:${event.colno}`);
+                    }
+                });
+
+                window.addEventListener('unhandledrejection', (event) => {
+                    const app = Alpine.store('app');
+                    if (app && app.addDebugLog) {
+                        app.addDebugLog('error', `Unhandled promise rejection: ${app.formatDebugArg(event.reason)}`);
+                    }
+                });
+            },
+
+            formatDebugArg(arg) {
+                if (arg instanceof Error) {
+                    return `${arg.name}: ${arg.message}`;
+                }
+                if (typeof arg === 'string') {
+                    return arg;
+                }
+                try {
+                    return JSON.stringify(arg);
+                } catch (e) {
+                    return String(arg);
+                }
+            },
+
+            addDebugLog(level, message) {
+                const now = new Date();
+                const entry = {
+                    id: this.debug.nextId++,
+                    time: now.toLocaleTimeString('zh-CN', {hour12: false}),
+                    level: String(level || 'info').toUpperCase(),
+                    message: String(message || '')
+                };
+                this.debug.logs.push(entry);
+                if (this.debug.logs.length > this.debug.maxEntries) {
+                    this.debug.logs.splice(0, this.debug.logs.length - this.debug.maxEntries);
+                }
+                if (entry.level === 'ERROR') {
+                    this.debug.lastError = entry.message.slice(0, 80);
+                }
+                queueMicrotask(() => {
+                    const logList = this.$refs.debugLogList;
+                    if (logList) logList.scrollTop = logList.scrollHeight;
+                });
+            },
+
+            debugLevelClass(level) {
+                return {
+                    'ERROR': 'text-danger-300',
+                    'WARN': 'text-amber-300',
+                    'LOG': 'text-slate-300',
+                    'INFO': 'text-primary-300',
+                    'SUCCESS': 'text-emerald-300',
+                    'REQUEST': 'text-cyan-300',
+                    'SSE': 'text-violet-300'
+                }[level] || 'text-slate-300';
+            },
+
+            clearDebugLogs() {
+                this.debug.logs = [];
+                this.debug.lastError = '';
+                this.addDebugLog('info', '日志已清空');
+            },
+
+            async copyDebugLogs() {
+                const text = this.debug.logs
+                    .map(entry => `[${entry.time}] ${entry.level} ${entry.message}`)
+                    .join('\n');
+                try {
+                    await navigator.clipboard.writeText(text);
+                    this.addDebugLog('success', '日志已复制到剪贴板');
+                } catch (e) {
+                    this.addDebugLog('error', '复制日志失败: ' + e.message);
+                }
             },
 
             initEditor() {
@@ -967,8 +1121,10 @@
             },
 
             async fetchConfig() {
+                this.addDebugLog('request', 'GET /api/v1/config');
                 try {
                     const res = await fetch('/api/v1/config');
+                    this.addDebugLog('request', `GET /api/v1/config -> ${res.status} ${res.statusText}`);
                     const json = await res.json();
                     const data = this.normalizeApiResponse(json);
 
@@ -990,15 +1146,19 @@
                         if (data.fonts) {
                             this.availableFonts = data.fonts;
                         }
+                        this.addDebugLog('info', `配置加载完成: template=${this.config.template_name}, templates=${this.availableTemplates.length}, fonts=${this.availableFonts.length}`);
                     }
                 } catch (e) {
+                    this.addDebugLog('error', '获取配置失败: ' + e.message);
                     this.toast("获取配置失败: " + e.message, 'error');
                 }
             },
 
             async switchTemplate(templateName) {
+                this.addDebugLog('request', `GET /api/v1/template/${templateName}`);
                 try {
                     const res = await fetch(`/api/v1/template/${templateName}`);
+                    this.addDebugLog('request', `GET /api/v1/template/${templateName} -> ${res.status} ${res.statusText}`);
                     if (!res.ok) {
                         throw new Error(`加载模板失败: ${res.statusText}`);
                     }
@@ -1011,8 +1171,10 @@
                     this.config.template = tplStr;
                     this.config.template_name = templateName;
                     this.resetPreviewImage();
+                    this.addDebugLog('info', `切换模板: ${templateName}`);
                     this.toast(`已切换到模板: ${templateName}`, 'success');
                 } catch (e) {
+                    this.addDebugLog('error', '切换模板失败: ' + e.message);
                     this.toast("切换模板失败: " + e.message, 'error');
                 }
             },
@@ -1096,32 +1258,38 @@
                 try {
                     JSON.parse(jsonVal);
                 } catch (e) {
+                    this.addDebugLog('error', 'JSON 格式错误: ' + e.message);
                     this.toast("JSON 格式错误", 'error');
                     return;
                 }
 
                 try {
+                    this.addDebugLog('request', `POST /api/v1/config template=${this.config.template_name}`);
                     const res = await fetch('/api/v1/config', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({...this.config, template: jsonVal})
                     });
+                    this.addDebugLog('request', `POST /api/v1/config -> ${res.status} ${res.statusText}`);
 
                     if (res.ok) {
                         this.isStatic = true;
                         this.aceEditor.setReadOnly(true);
+                        this.addDebugLog('success', '配置已保存');
                         this.toast("配置已保存", 'success');
                         this.fetchFiles(true);
                     } else {
                         throw new Error("服务端错误");
                     }
                 } catch (e) {
+                    this.addDebugLog('error', '保存失败: ' + e.message);
                     this.toast("保存失败: " + e.message, 'error');
                 }
             },
 
             async fetchFiles(renderInput=true) {
                 this.loading.files = true;
+                this.addDebugLog('request', `GET /api/v1/file/tree renderInput=${renderInput}`);
                 console.log('[fetchFiles] 开始请求, renderInput=', renderInput);
 
                 try {
@@ -1135,6 +1303,7 @@
                     });
 
                     console.log('[fetchFiles] 响应状态:', res.status, res.statusText);
+                    this.addDebugLog('request', `GET /api/v1/file/tree -> ${res.status} ${res.statusText}`);
 
                     if (!res.ok) {
                         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -1143,6 +1312,7 @@
                     const json = await res.json();
                     const data = this.normalizeApiResponse(json);
                     console.log('[fetchFiles] 解析完成, input_files:', data.input_files?.length, 'output_files:', data.output_files?.length);
+                    this.addDebugLog('info', `文件树解析完成: input=${data.input_files?.length || 0}, output=${data.output_files?.length || 0}`);
 
                     const allCurrentFileValues = new Set();
                     const collectValues = (node) => {
@@ -1168,9 +1338,11 @@
                     }
                 } catch (e) {
                     console.error('[fetchFiles] 请求失败:', e);
+                    this.addDebugLog('error', '文件列表加载失败: ' + e.message);
                     this.toast("文件列表加载失败: " + e.message, 'error');
                 } finally {
                     console.log('[fetchFiles] 完成, loading.files = false');
+                    this.addDebugLog('info', '文件列表加载结束');
                     this.loading.files = false;
                 }
             },
@@ -1208,6 +1380,7 @@
                 } else {
                     delete this.customTexts[this.preview.path];
                 }
+                this.addDebugLog('info', `设置自定义内容: ${this.preview.name || this.preview.path} -> ${value || '(空)'}`);
                 this.resetPreviewImage();
             },
 
@@ -1218,12 +1391,14 @@
                 } else {
                     delete this.watermarkFonts[this.preview.path];
                 }
+                this.addDebugLog('info', `设置字体: ${this.preview.name || this.preview.path} -> ${value || '默认字体'}`);
                 this.resetPreviewImage();
             },
 
             async renderPreview() {
                 if (!this.preview.path) return;
                 this.loading.preview = true;
+                this.addDebugLog('request', `POST /api/v1/preview/render path=${this.preview.path}, template=${this.config.template_name}, text=${this.currentCustomText || '(空)'}, font=${this.currentWatermarkFont || '默认'}`);
                 try {
                     const response = await fetch('/api/v1/preview/render', {
                         method: 'POST',
@@ -1235,24 +1410,30 @@
                             templateName: this.config.template_name
                         })
                     });
+                    this.addDebugLog('request', `POST /api/v1/preview/render -> ${response.status} ${response.statusText}`);
 
                     if (!response.ok) {
                         const text = await response.text();
+                        this.addDebugLog('error', `预览接口错误响应: ${text}`);
                         throw new Error(text || `HTTP ${response.status}`);
                     }
 
                     const blob = await response.blob();
+                    this.addDebugLog('info', `预览图片大小: ${blob.size} bytes`);
                     if (this.preview.renderedObjectUrl) {
                         URL.revokeObjectURL(this.preview.renderedObjectUrl);
                     }
                     const objectUrl = URL.createObjectURL(blob);
                     this.preview.renderedObjectUrl = objectUrl;
                     this.preview.url = objectUrl;
+                    this.addDebugLog('success', '预览已刷新');
                     this.toast('预览已刷新', 'success');
                 } catch (e) {
+                    this.addDebugLog('error', '预览生成失败: ' + e.message);
                     this.toast('预览生成失败: ' + e.message, 'error');
                 } finally {
                     this.loading.preview = false;
+                    this.addDebugLog('info', '预览请求结束');
                 }
             },
 
@@ -1269,6 +1450,10 @@
                 this.progress.current = '';
                 this.progress.message = '准备处理...';
                 this.progress.completeMessage = '';
+                this.addDebugLog('request', `POST /api/v1/start_process selected=${this.selectedItems.length}`);
+                this.addDebugLog('info', `处理文件: ${JSON.stringify(this.selectedItems)}`);
+                this.addDebugLog('info', `自定义内容: ${JSON.stringify(this.customTexts)}`);
+                this.addDebugLog('info', `字体选择: ${JSON.stringify(this.watermarkFonts)}`);
 
                 try {
                     const response = await fetch('/api/v1/start_process', {
@@ -1280,6 +1465,7 @@
                             watermarkFonts: this.watermarkFonts
                         })
                     });
+                    this.addDebugLog('request', `POST /api/v1/start_process -> ${response.status} ${response.statusText}`);
 
                     if (!response.ok) {
                         throw new Error('服务端错误');
@@ -1315,14 +1501,17 @@
                                     if (data.percent !== undefined) this.progress.percent = data.percent;
                                     if (data.current !== undefined) this.progress.current = data.current;
                                     if (data.message !== undefined) this.progress.message = data.message;
+                                    this.addDebugLog('sse', `${currentEvent || 'message'} ${JSON.stringify(data)}`);
 
                                     // 处理完成事件
                                     if (currentEvent === 'complete') {
                                         this.progress.complete = true;
                                         this.progress.completeMessage = data.message || '处理完成';
+                                        this.addDebugLog(data.failure > 0 ? 'warn' : 'success', data.message || '处理完成');
                                     }
                                 } catch (e) {
                                     console.error('解析 SSE 数据失败:', e, jsonStr);
+                                    this.addDebugLog('error', `解析 SSE 数据失败: ${e.message}; raw=${jsonStr}`);
                                 }
                                 currentEvent = ''; // 重置事件类型
                             }
@@ -1331,10 +1520,12 @@
 
                     // 等待 SSE 连接完全关闭后再刷新文件列表
                     console.log('[startProcess] SSE 完成，等待连接关闭...');
+                    this.addDebugLog('info', 'SSE 完成，刷新文件列表');
                     await new Promise(resolve => setTimeout(resolve, 500));
                     await this.fetchFiles(false);
 
                 } catch (e) {
+                    this.addDebugLog('error', '网络请求失败: ' + e.message);
                     this.toast('网络请求失败: ' + e.message, 'error');
                     this.progress.active = false;
                 }
