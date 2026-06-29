@@ -11,7 +11,8 @@ templates_dir = Path('./config/templates')
 
 def load_config() -> configparser.ConfigParser:
     config = configparser.ConfigParser()
-    config.read(CONFIG_PATH)
+    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+        config.read_file(f)
     return config
 
 
