@@ -518,164 +518,91 @@
                 </div>
 
                 <!-- 底部居中信息水印 — 逐行设置面板（仅该模式可见） -->
-                <div x-show="isBottomCenterMode" x-transition class="px-5 py-3 border-b border-slate-100 bg-white/80 space-y-3">
+                <div x-show="isBottomCenterMode" x-transition class="px-3 py-2 border-b border-slate-100 bg-white/80 space-y-2">
                     <div class="flex items-center justify-between cursor-pointer" @click="showBottomCenterSettings = !showBottomCenterSettings">
                         <div class="flex items-center gap-2">
-                            <svg class="w-4 h-4 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="w-3.5 h-3.5 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                             </svg>
-                            <span class="text-xs font-semibold text-slate-600">逐行设置</span>
-                            <span class="text-[10px] px-1.5 py-0.5 bg-violet-100 text-violet-600 rounded-full font-medium">独立模式</span>
+                            <span class="text-[11px] font-semibold text-slate-600">逐行设置</span>
+                            <span class="text-[9px] px-1.5 py-0.5 bg-violet-100 text-violet-600 rounded-full font-medium">独立</span>
                         </div>
-                        <svg class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="showBottomCenterSettings ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" :class="showBottomCenterSettings ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                         </svg>
                     </div>
 
-                    <div x-show="showBottomCenterSettings" x-transition class="space-y-3">
+                    <div x-show="showBottomCenterSettings" x-transition class="space-y-2">
 
-                        <!-- ===== 地点行 ===== -->
-                        <fieldset class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
-                            <legend class="text-[11px] font-semibold text-slate-500 px-1">📍 地点行</legend>
-                            <div class="grid grid-cols-2 gap-2">
-                                <!-- 透明度 -->
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">透明度 <span class="text-slate-300" x-text="'('+Math.round(bottomCenterSettings.location.opacity/2.55)+'%)'"></span></label>
-                                    <input type="range" min="0" max="255" step="1"
-                                           :value="bottomCenterSettings.location.opacity"
-                                           @input="updateBottomCenterSetting('location', 'opacity', $event.target.value)"
-                                           class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-500">
+                        <!-- 标签页切换 -->
+                        <div class="flex gap-1 bg-slate-100 rounded-lg p-0.5">
+                            <template x-for="tab in [
+                                {key:'location',  icon:'📍', label:'地点'},
+                                {key:'time',      icon:'🕐', label:'时间'},
+                                {key:'parameter', icon:'📷', label:'参数'}
+                            ]" :key="tab.key">
+                                <button @click="bottomCenterActiveTab = tab.key"
+                                        class="flex-1 py-1.5 text-[10px] font-medium rounded-md transition-all duration-150"
+                                        :class="bottomCenterActiveTab === tab.key
+                                            ? 'bg-white text-violet-600 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-700'"
+                                        x-text="tab.icon + ' ' + tab.label"></button>
+                            </template>
+                        </div>
+
+                        <!-- 当前标签页的 4 个控件（单行横排） -->
+                        <div class="flex gap-2 items-end">
+                            <!-- 透明度滑块 -->
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between mb-0.5">
+                                    <span class="text-[9px] text-slate-400">透明度</span>
+                                    <span class="text-[9px] text-slate-300"
+                                          x-text="Math.round((bottomCenterSettings[bottomCenterActiveTab]?.opacity || 0)/2.55)+'%'"></span>
                                 </div>
-                                <!-- 字体 -->
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">字体</label>
-                                    <select :value="bottomCenterSettings.location.font"
-                                            @change="updateBottomCenterSetting('location', 'font', $event.target.value)"
-                                            class="w-full h-7 px-1.5 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
-                                        <option value="">默认字体</option>
-                                        <template x-for="font in availableFonts" :key="font">
-                                            <option :value="font" x-text="font"></option>
-                                        </template>
-                                    </select>
-                                </div>
-                                <!-- 字号 (vh%) -->
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">字号</label>
-                                    <div class="relative">
-                                        <input type="number" min="0.1" max="50" step="0.01"
-                                               :value="bottomCenterSettings.location.height"
-                                               @input="updateBottomCenterSetting('location', 'height', $event.target.value)"
-                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
-                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
-                                    </div>
-                                </div>
-                                <!-- 距底部 (vh%) -->
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">距底部</label>
-                                    <div class="relative">
-                                        <input type="number" min="0" max="100" step="0.01"
-                                               :value="bottomCenterSettings.location.bottom"
-                                               @input="updateBottomCenterSetting('location', 'bottom', $event.target.value)"
-                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
-                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
-                                    </div>
+                                <input type="range" min="0" max="255" step="1"
+                                       :value="bottomCenterSettings[bottomCenterActiveTab]?.opacity || 0"
+                                       @input="updateBottomCenterSetting(bottomCenterActiveTab, 'opacity', $event.target.value)"
+                                       class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-500">
+                            </div>
+                            <!-- 字体 -->
+                            <div class="w-[84px] shrink-0">
+                                <label class="text-[9px] text-slate-400 block mb-0.5">字体</label>
+                                <select :value="bottomCenterSettings[bottomCenterActiveTab]?.font || ''"
+                                        @change="updateBottomCenterSetting(bottomCenterActiveTab, 'font', $event.target.value)"
+                                        class="w-full h-7 px-1 text-[10px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                    <option value="">默认</option>
+                                    <template x-for="font in availableFonts" :key="font">
+                                        <option :value="font" x-text="font"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <!-- 字号 -->
+                            <div class="w-[60px] shrink-0">
+                                <label class="text-[9px] text-slate-400 block mb-0.5">字号</label>
+                                <div class="relative">
+                                    <input type="number" min="0.1" max="50" step="0.01"
+                                           :value="bottomCenterSettings[bottomCenterActiveTab]?.height || 0"
+                                           @input="updateBottomCenterSetting(bottomCenterActiveTab, 'height', $event.target.value)"
+                                           class="w-full h-7 pl-1 pr-5 text-[10px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                    <span class="absolute right-1 top-1.5 text-[9px] text-slate-300 leading-none">vh</span>
                                 </div>
                             </div>
-                        </fieldset>
-
-                        <!-- ===== 时间行 ===== -->
-                        <fieldset class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
-                            <legend class="text-[11px] font-semibold text-slate-500 px-1">🕐 时间行</legend>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">透明度 <span class="text-slate-300" x-text="'('+Math.round(bottomCenterSettings.time.opacity/2.55)+'%)'"></span></label>
-                                    <input type="range" min="0" max="255" step="1"
-                                           :value="bottomCenterSettings.time.opacity"
-                                           @input="updateBottomCenterSetting('time', 'opacity', $event.target.value)"
-                                           class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-500">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">字体</label>
-                                    <select :value="bottomCenterSettings.time.font"
-                                            @change="updateBottomCenterSetting('time', 'font', $event.target.value)"
-                                            class="w-full h-7 px-1.5 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
-                                        <option value="">默认字体</option>
-                                        <template x-for="font in availableFonts" :key="font">
-                                            <option :value="font" x-text="font"></option>
-                                        </template>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">字号</label>
-                                    <div class="relative">
-                                        <input type="number" min="0.1" max="50" step="0.01"
-                                               :value="bottomCenterSettings.time.height"
-                                               @input="updateBottomCenterSetting('time', 'height', $event.target.value)"
-                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
-                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">距底部</label>
-                                    <div class="relative">
-                                        <input type="number" min="0" max="100" step="0.01"
-                                               :value="bottomCenterSettings.time.bottom"
-                                               @input="updateBottomCenterSetting('time', 'bottom', $event.target.value)"
-                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
-                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
-                                    </div>
+                            <!-- 距底部 -->
+                            <div class="w-[60px] shrink-0">
+                                <label class="text-[9px] text-slate-400 block mb-0.5">距底</label>
+                                <div class="relative">
+                                    <input type="number" min="0" max="100" step="0.01"
+                                           :value="bottomCenterSettings[bottomCenterActiveTab]?.bottom || 0"
+                                           @input="updateBottomCenterSetting(bottomCenterActiveTab, 'bottom', $event.target.value)"
+                                           class="w-full h-7 pl-1 pr-5 text-[10px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
+                                    <span class="absolute right-1 top-1.5 text-[9px] text-slate-300 leading-none">vh</span>
                                 </div>
                             </div>
-                        </fieldset>
-
-                        <!-- ===== 参数行 ===== -->
-                        <fieldset class="border border-slate-200 rounded-xl p-3 bg-slate-50/50">
-                            <legend class="text-[11px] font-semibold text-slate-500 px-1">📷 参数行（焦距/快门/光圈/ISO）</legend>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">透明度 <span class="text-slate-300" x-text="'('+Math.round(bottomCenterSettings.parameter.opacity/2.55)+'%)'"></span></label>
-                                    <input type="range" min="0" max="255" step="1"
-                                           :value="bottomCenterSettings.parameter.opacity"
-                                           @input="updateBottomCenterSetting('parameter', 'opacity', $event.target.value)"
-                                           class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-500">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">字体</label>
-                                    <select :value="bottomCenterSettings.parameter.font"
-                                            @change="updateBottomCenterSetting('parameter', 'font', $event.target.value)"
-                                            class="w-full h-7 px-1.5 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
-                                        <option value="">默认字体</option>
-                                        <template x-for="font in availableFonts" :key="font">
-                                            <option :value="font" x-text="font"></option>
-                                        </template>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">字号</label>
-                                    <div class="relative">
-                                        <input type="number" min="0.1" max="50" step="0.01"
-                                               :value="bottomCenterSettings.parameter.height"
-                                               @input="updateBottomCenterSetting('parameter', 'height', $event.target.value)"
-                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
-                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-slate-400 block mb-0.5">距底部</label>
-                                    <div class="relative">
-                                        <input type="number" min="0" max="100" step="0.01"
-                                               :value="bottomCenterSettings.parameter.bottom"
-                                               @input="updateBottomCenterSetting('parameter', 'bottom', $event.target.value)"
-                                               class="w-full h-7 pl-1.5 pr-8 text-[11px] rounded-lg border border-slate-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none bg-white">
-                                        <span class="absolute right-2 top-1 text-[10px] text-slate-400">vh%</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </fieldset>
+                        </div>
 
                         <!-- 应用提示 -->
-                        <p class="text-[10px] text-slate-400 text-center">
-                            修改后请点击 <strong class="text-violet-500">刷新预览</strong> 查看效果；确认无误后 <strong class="text-violet-500">保存配置</strong> 以持久化。
+                        <p class="text-[9px] text-slate-400 text-center leading-tight">
+                            修改后点 <strong class="text-violet-500">刷新预览</strong> 查看，确认后 <strong class="text-violet-500">保存配置</strong>
                         </p>
                     </div>
                 </div>
@@ -1064,6 +991,7 @@
             aceEditor: null,
             // 底部居中信息水印 — 逐行设置
             showBottomCenterSettings: true,
+            bottomCenterActiveTab: 'location',
             bottomCenterSettings: {
                 location: { opacity: 230, font: 'AlibabaPuHuiTi-2-45-Light.otf', height: 4.8, bottom: 19.2 },
                 time:     { opacity: 115, font: 'AlibabaPuHuiTi-2-45-Light.otf', height: 1.68, bottom: 13.6 },
