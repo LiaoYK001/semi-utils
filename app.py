@@ -4,6 +4,7 @@ import threading
 import webbrowser
 import queue
 import time
+import atexit
 from io import BytesIO
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,8 +17,8 @@ from core.configs import fonts_dir, load_config, load_project_info
 
 PRESETS_PATH = Path('config/presets.json')
 from core.logger import logger, init_from_config
-from core.util import (list_files, log_rt, get_exif, convert_heic_to_jpeg, get_template, get_template_content,
-                       save_template, list_templates)
+from core.util import (list_files, list_children, log_rt, get_exif, convert_heic_to_jpeg,
+                       get_template, get_template_content, save_template, list_templates, flush_cache)
 from processor.core import start_process
 
 # 加载配置
@@ -137,6 +138,12 @@ def save_config():
 @api.route('/api/v1/file/tree', methods=['GET'])
 @log_rt
 def list_input_files():
+    """
+    获取输入/输出文件夹的顶层目录结构（仅一层，不递归）。
+
+    目录节点附带 has_children 标记，前端展开时调用 /api/v1/file/children 懒加载子节点。
+    这避免了在机械硬盘/SMB 场景下全量递归扫描导致的卡顿。
+    """
     import time
     start = time.time()
     suffixes = set([ft for ft in config.get('DEFAULT', 'supported_file_suffixes').split(',')])
@@ -144,17 +151,17 @@ def list_input_files():
     input_folder = config.get('DEFAULT', 'input_folder')
     output_folder = config.get('DEFAULT', 'output_folder')
 
-    logger.debug(f"开始扫描文件系统, input={input_folder}, output={output_folder}")
+    logger.debug(f"开始扫描文件系统(顶层), input={input_folder}, output={output_folder}")
 
-    # 扫描输入文件夹
+    # 扫描输入文件夹（仅顶层）
     t1 = time.time()
-    input_children = list_files(input_folder, suffixes)
-    logger.debug(f"输入文件夹扫描完成, 耗时: {time.time() - t1:.2f}s, 文件数: {len(input_children)}")
+    input_children = list_children(input_folder, suffixes)
+    logger.debug(f"输入文件夹扫描完成, 耗时: {time.time() - t1:.2f}s, 顶层节点数: {len(input_children)}")
 
-    # 扫描输出文件夹
+    # 扫描输出文件夹（仅顶层）
     t2 = time.time()
-    output_children = list_files(output_folder, suffixes)
-    logger.debug(f"输出文件夹扫描完成, 耗时: {time.time() - t2:.2f}s, 文件数: {len(output_children)}")
+    output_children = list_children(output_folder, suffixes)
+    logger.debug(f"输出文件夹扫描完成, 耗时: {time.time() - t2:.2f}s, 顶层节点数: {len(output_children)}")
 
     logger.debug(f"文件扫描总耗时: {time.time() - start:.2f}s")
 
@@ -162,6 +169,46 @@ def list_input_files():
         'input_files': [{'children': input_children, 'label': 'Root'}],
         'output_files': [{'children': output_children, 'label': 'Root'}],
     })
+
+
+@api.route('/api/v1/file/children', methods=['GET'])
+@log_rt
+def list_file_children():
+    """
+    获取指定目录下的直接子项（不递归），用于树形懒加载。
+
+    GET /api/v1/file/children?path=/some/directory
+
+    Returns:
+        JSON: { 'children': [...], 'path': '/some/directory' }
+        每个子节点含 label, value, is_file(可选), rating(可选),
+        has_children(可选，表示目录是否还有子节点)
+    """
+    path = request.args.get('path', '')
+
+    if not path:
+        return jsonify({'error': 'Missing path parameter'}), 400
+
+    abs_path = os.path.abspath(path)
+
+    if not os.path.exists(abs_path):
+        return jsonify({'error': 'Directory not found'}), 404
+
+    if not os.path.isdir(abs_path):
+        return jsonify({'error': 'Path is not a directory'}), 400
+
+    suffixes = set([ft for ft in config.get('DEFAULT', 'supported_file_suffixes').split(',')])
+
+    try:
+        children = list_children(abs_path, suffixes)
+        return jsonify({
+            'children': children,
+            'path': abs_path,
+        })
+    except PermissionError:
+        return jsonify({'error': 'Permission denied'}), 403
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @api.route('/api/v1/file', methods=['GET'])
@@ -546,6 +593,9 @@ def open_browser(delay: int = 0):
 
 
 if __name__ == '__main__':
+    # 注册退出时刷新缓存
+    atexit.register(flush_cache)
+
     # 在单独的线程中打开浏览器
     debug = config.getboolean('DEFAULT', 'debug')
     open_browser_later = lambda: open_browser(1)

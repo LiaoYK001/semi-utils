@@ -24,6 +24,7 @@ from core.jinja2renders import (
     vw,
 )
 from core.logger import logger
+from core.cache import get_cached_rating, get_cached_exif, set_cached, flush_cache
 
 if platform.system() == 'Windows':
     EXIFTOOL_PATH = Path('./exiftool/exiftool.exe')
@@ -38,12 +39,28 @@ else:
 _RATING_CACHE = {}
 
 
+def _file_stat(path: str) -> tuple[int, int] | None:
+    """获取文件的 mtime_ns 和 size，用于缓存键"""
+    try:
+        st = Path(path).stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
 def get_exif(path) -> dict:
     """
-    获取exif信息
+    获取exif信息（优先从 SQLite 缓存读取）
     :param path: 照片路径
     :return: exif信息
     """
+    # 优先查 SQLite 缓存
+    stat = _file_stat(path)
+    if stat:
+        cached = get_cached_exif(path, stat[0], stat[1])
+        if cached is not None:
+            return cached
+
     exif_dict = {}
 
     # 优先使用 exiftool，提取更完整
@@ -67,6 +84,8 @@ def get_exif(path) -> dict:
                 exif_dict[key] = value_clean
 
             if exif_dict:
+                if stat:
+                    set_cached(path, stat[0], stat[1], exif_dict=exif_dict)
                 return exif_dict
         except (FileNotFoundError, subprocess.CalledProcessError, OSError) as e:
             logger.warning(f'exiftool 提取失败，回退到 Pillow: {e}')
@@ -143,6 +162,9 @@ def get_exif(path) -> dict:
     except Exception as e:
         logger.error(f'get_exif error: {path} : {e}')
 
+    # 回写缓存（即使为空也记录，避免重复解析失败的文件）
+    if stat:
+        set_cached(path, stat[0], stat[1], exif_dict=exif_dict if exif_dict else None)
     return exif_dict
 
 
@@ -272,11 +294,25 @@ def _rating_cache_key(path):
 
 
 def get_image_rating(path):
-    """Read Windows/Lightroom 1-5 star rating from EXIF/XMP metadata."""
+    """Read Windows/Lightroom 1-5 star rating from EXIF/XMP metadata.
+
+    优先查 SQLite 缓存（基于路径 + mtime + 文件大小），再查内存缓存，
+    最后才调用 exiftool/Pillow/XMP 解析。
+    """
+    # 1. 内存缓存（最快，进程生命周期内有效）
     cache_key = _rating_cache_key(path)
     if cache_key in _RATING_CACHE:
         return _RATING_CACHE[cache_key]
 
+    # 2. SQLite 持久化缓存（跨进程重启有效）
+    stat = _file_stat(path)
+    if stat:
+        cached = get_cached_rating(path, stat[0], stat[1])
+        if cached is not None:
+            _RATING_CACHE[cache_key] = cached
+            return cached
+
+    # 3. 实际解析（exiftool → Pillow → XMP）
     rating = None
     try:
         exif = get_exif(path)
@@ -293,14 +329,83 @@ def get_image_rating(path):
     if rating is None:
         rating = _read_sidecar_xmp_rating(path)
 
+    # 回写缓存
     if cache_key is not None:
         _RATING_CACHE[cache_key] = rating
+    if stat:
+        set_cached(path, stat[0], stat[1], rating=rating)
+
     return rating
+
+
+def list_children(path: str, suffixes: set[str]):
+    """
+    列出指定目录下的直接子项（不递归），用于树形懒加载。
+
+    Args:
+        path: 要扫描的目录路径
+        suffixes: 支持的文件后缀集合
+
+    Returns:
+        list[dict]: 子目录和文件列表，目录节点含 has_children 标记
+    """
+    result = []
+    root = Path(path).resolve()
+
+    if not root.exists() or not root.is_dir():
+        return result
+
+    try:
+        items = list(root.iterdir())
+        dirs = sorted(
+            [i for i in items if i.is_dir() and not i.name.startswith('.') and not i.is_symlink()],
+            key=lambda x: x.name.lower()
+        )
+        files = sorted(
+            [i for i in items if i.is_file() and not i.name.startswith('.') and i.suffix.lower() in suffixes],
+            key=lambda x: (x.stat().st_mtime, x.name.lower()),
+            reverse=True
+        )
+
+        # 目录节点：附带 has_children 标记供前端判断是否可展开
+        for item in dirs:
+            try:
+                sub_items = list(item.iterdir())
+                has_kids = any(
+                    (s.is_dir() and not s.name.startswith('.') and not s.is_symlink()) or
+                    (s.is_file() and not s.name.startswith('.') and s.suffix.lower() in suffixes)
+                    for s in sub_items
+                )
+            except (PermissionError, OSError):
+                has_kids = False
+
+            result.append({
+                'label': item.name,
+                'value': str(item),
+                'children': [],
+                'has_children': has_kids,
+            })
+
+        # 文件节点：附带星级评分
+        for item in files:
+            result.append({
+                'label': item.name,
+                'value': str(item),
+                'is_file': True,
+                'rating': get_image_rating(str(item)),
+            })
+
+    except PermissionError:
+        logger.debug(f"list_children: 权限不足，跳过 {path}")
+    except Exception as e:
+        logger.error(f"list_children: 扫描失败 {path}: {e}")
+
+    return result
 
 
 def list_files(path: str, suffixes: set[str], depth: int = 0, max_depth: int = 20):
     """
-    使用 pathlib 实现的版本
+    递归扫描目录树（保留向后兼容，新代码优先使用 list_children）。
 
     Args:
         path: 要扫描的路径
