@@ -1,11 +1,12 @@
 """
-SQLite 持久化缓存层，用于缓存图片 EXIF 星级评分和元数据。
+SQLite 持久化缓存层，用于缓存图片 EXIF 星级评分、元数据和用户自定义文本。
 
 避免每次启动后对每个文件重复调用 exiftool 子进程，
 在机械硬盘/SMB 场景下显著降低 I/O 开销。
 """
 
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -18,6 +19,9 @@ _local = threading.local()
 
 # 缓存数据库路径，由 core/__init__.py 中的 CACHE_DB_PATH 覆盖
 CACHE_DB_PATH = 'config/cache.db'
+
+# 缓存上限 200MB
+MAX_CACHE_SIZE = 200 * 1024 * 1024
 
 # 批量写入缓冲区（避免每条记录都触发 fsync）
 _BATCH_BUFFER: dict[str, tuple] = {}
@@ -55,6 +59,17 @@ def _init_schema(conn: sqlite3.Connection):
     ''')
     conn.execute('''
         CREATE INDEX IF NOT EXISTS idx_file_cache_path ON file_cache(path)
+    ''')
+    # 用户自定义文本（地点等），独立于文件 mtime，持久保留
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS custom_text_cache (
+            path TEXT PRIMARY KEY,
+            text TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL
+        )
+    ''')
+    conn.execute('''
+        CREATE INDEX IF NOT EXISTS idx_custom_text_path ON custom_text_cache(path)
     ''')
     conn.commit()
 
@@ -184,6 +199,143 @@ def get_cache_stats() -> dict:
         rated = conn.execute(
             'SELECT COUNT(*) as cnt FROM file_cache WHERE rating IS NOT NULL'
         ).fetchone()['cnt']
-        return {'total_entries': total, 'with_rating': rated}
+        custom = conn.execute(
+            'SELECT COUNT(*) as cnt FROM custom_text_cache WHERE text != \'\''
+        ).fetchone()['cnt']
+        return {'total_entries': total, 'with_rating': rated, 'custom_texts': custom}
     except Exception:
-        return {'total_entries': 0, 'with_rating': 0}
+        return {'total_entries': 0, 'with_rating': 0, 'custom_texts': 0}
+
+
+def get_cache_size_bytes() -> int:
+    """获取缓存数据库文件物理大小（字节）"""
+    try:
+        db_path = Path(CACHE_DB_PATH)
+        if db_path.exists():
+            # 计算 .db + .db-wal + .db-shm
+            total = db_path.stat().st_size
+            for suffix in ('-wal', '-shm'):
+                p = Path(str(db_path) + suffix)
+                if p.exists():
+                    total += p.stat().st_size
+            return total
+    except OSError:
+        pass
+    return 0
+
+
+def get_cache_size_mb() -> float:
+    """获取缓存数据库文件大小（MB）"""
+    return round(get_cache_size_bytes() / (1024 * 1024), 2)
+
+
+def enforce_cache_size_limit():
+    """检查缓存大小，超过上限时删除最旧的记录"""
+    size = get_cache_size_bytes()
+    if size <= MAX_CACHE_SIZE:
+        return
+
+    try:
+        conn = _get_conn()
+        # 删除最旧的 20% 记录
+        total = conn.execute('SELECT COUNT(*) as cnt FROM file_cache').fetchone()['cnt']
+        to_delete = max(int(total * 0.2), 100)
+        conn.execute('''
+            DELETE FROM file_cache WHERE path IN (
+                SELECT path FROM file_cache ORDER BY updated_at ASC LIMIT ?
+            )
+        ''', (to_delete,))
+        conn.commit()
+        logger.info(f'cache size limit reached ({size/1024/1024:.1f}MB), pruned {to_delete} oldest entries')
+    except Exception as e:
+        logger.error(f'cache enforce limit error: {e}')
+
+
+# ---- 自定义文本（地点）缓存 ----
+
+def get_custom_text(path: str) -> str | None:
+    """读取指定文件的自定义文本"""
+    try:
+        conn = _get_conn()
+        row = conn.execute(
+            'SELECT text FROM custom_text_cache WHERE path = ?',
+            (path,)
+        ).fetchone()
+        return row['text'] if row else None
+    except Exception as e:
+        logger.debug(f'custom_text read error for {path}: {e}')
+    return None
+
+
+def get_all_custom_texts() -> dict[str, str]:
+    """读取所有自定义文本，返回 {path: text}"""
+    try:
+        conn = _get_conn()
+        rows = conn.execute(
+            'SELECT path, text FROM custom_text_cache WHERE text != \'\''
+        ).fetchall()
+        return {row['path']: row['text'] for row in rows}
+    except Exception as e:
+        logger.debug(f'get_all_custom_texts error: {e}')
+    return {}
+
+
+def set_custom_text(path: str, text: str):
+    """保存文件的自定义文本"""
+    if not path:
+        return
+    try:
+        conn = _get_conn()
+        now = time.strftime('%Y-%m-%d %H:%M:%S')
+        if text:
+            conn.execute(
+                '''INSERT OR REPLACE INTO custom_text_cache (path, text, updated_at)
+                   VALUES (?, ?, ?)''',
+                (path, text, now)
+            )
+        else:
+            # 空文本则删除记录
+            conn.execute('DELETE FROM custom_text_cache WHERE path = ?', (path,))
+        conn.commit()
+    except Exception as e:
+        logger.debug(f'custom_text write error for {path}: {e}')
+
+
+def batch_set_custom_texts(data: dict[str, str]):
+    """批量保存自定义文本"""
+    if not data:
+        return
+    try:
+        conn = _get_conn()
+        now = time.strftime('%Y-%m-%d %H:%M:%S')
+        rows = [(path, text, now) for path, text in data.items() if text]
+        empty = [path for path, text in data.items() if not text]
+        if rows:
+            conn.executemany(
+                '''INSERT OR REPLACE INTO custom_text_cache (path, text, updated_at)
+                   VALUES (?, ?, ?)''', rows
+            )
+        if empty:
+            conn.executemany(
+                'DELETE FROM custom_text_cache WHERE path = ?',
+                [(p,) for p in empty]
+            )
+        conn.commit()
+        logger.debug(f'custom_text batch: {len(rows)} saved, {len(empty)} deleted')
+    except Exception as e:
+        logger.error(f'custom_text batch error: {e}')
+
+
+def clear_cache():
+    """清空所有缓存数据"""
+    try:
+        conn = _get_conn()
+        conn.execute('DELETE FROM file_cache')
+        conn.execute('DELETE FROM custom_text_cache')
+        conn.commit()
+        # 压缩数据库文件
+        conn.execute('VACUUM')
+        conn.commit()
+        logger.info('cache cleared and vacuumed')
+    except Exception as e:
+        logger.error(f'clear_cache error: {e}')

@@ -20,6 +20,9 @@ _THUMB_CACHE = {}
 from core.logger import logger, init_from_config
 from core.util import (list_files, list_children, log_rt, get_exif, convert_heic_to_jpeg,
                        get_template, get_template_content, save_template, list_templates, flush_cache)
+from core.cache import (get_cache_stats, get_cache_size_mb, get_cache_size_bytes,
+                        get_custom_text, get_all_custom_texts, set_custom_text,
+                        clear_cache, enforce_cache_size_limit, MAX_CACHE_SIZE)
 from processor.core import start_process
 
 # 加载配置
@@ -216,6 +219,65 @@ def list_file_children():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+# ==================== 缓存管理 API ====================
+
+@api.route('/api/v1/open-folder', methods=['GET'])
+def open_folder_api():
+    """在系统文件管理器中打开指定文件夹"""
+    path = request.args.get('path', '')
+    if not path or not os.path.isdir(path):
+        return jsonify({'error': 'Invalid path'}), 400
+    try:
+        os.startfile(path)
+        return jsonify({'message': 'opened'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/api/v1/cache/stats', methods=['GET'])
+def get_cache_info():
+    """获取缓存统计：文件数、自定义文本数、物理大小"""
+    stats = get_cache_stats()
+    return jsonify({
+        **stats,
+        'size_bytes': get_cache_size_bytes(),
+        'size_mb': get_cache_size_mb(),
+        'max_size_mb': round(MAX_CACHE_SIZE / (1024 * 1024), 0),
+    })
+
+
+@api.route('/api/v1/cache', methods=['DELETE'])
+def clear_cache_api():
+    """手动清空所有缓存（EXIF + 自定义文本）"""
+    try:
+        clear_cache()
+        logger.info('缓存已手动清空')
+        return jsonify({'message': '缓存已清空'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/api/v1/cache/custom-texts', methods=['GET'])
+def get_all_custom_texts_api():
+    """获取所有已保存的自定义文本（地点等）"""
+    texts = get_all_custom_texts()
+    return jsonify({'custom_texts': texts})
+
+
+@api.route('/api/v1/cache/custom-text', methods=['POST'])
+def save_custom_text_api():
+    """保存单个文件的自定义文本"""
+    data = request.get_json()
+    if not data or 'path' not in data:
+        return jsonify({'error': 'Missing path'}), 400
+
+    text = data.get('text', '')
+    set_custom_text(data['path'], text)
+    return jsonify({'message': 'saved'}), 200
+
+
+# ==================== 文件预览 API ====================
 
 @api.route('/api/v1/file', methods=['GET'])
 def get_file():

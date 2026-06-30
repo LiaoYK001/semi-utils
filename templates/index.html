@@ -69,6 +69,10 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
 
+        [x-cloak] {
+            display: none !important;
+        }
+
         .ace_editor {
             border: 1px solid #e5e7eb;
             border-radius: 0.5rem;
@@ -213,7 +217,7 @@
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-50 to-slate-100 h-screen w-full flex flex-col overflow-hidden text-sm"
-      x-data="app()" x-init="init()">
+      x-data="app()" x-init="init()" @keydown.window.escape="closeContextMenu()">
 
 <!-- 顶部导航 -->
 <header class="glass-effect border-b border-slate-200/50 h-16 flex items-center px-6 shadow-sm shrink-0 z-20">
@@ -437,7 +441,11 @@
                         </button>
                     </div>
 
-                    <div class="flex-1 overflow-y-auto pr-2">
+                    <div x-ref="inputFileArea"
+                         tabindex="0"
+                         class="relative flex-1 overflow-y-auto pr-2 select-none"
+                         @keydown="handleFileListKeydown($event)"
+                         @pointerdown="startMarqueeSelection($event)">
                         <!-- Loading -->
                         <div x-show="loading.files" class="flex flex-col items-center justify-center py-12 text-slate-400">
                             <svg class="animate-spin h-8 w-8 text-primary-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -462,11 +470,14 @@
                                 <div x-data="treeNode(node, true, 0)" class="tree-item">
                                     <div class="tree-node flex items-center py-2 px-2 rounded-lg cursor-pointer select-none"
                                          :style="'padding-left: 8px'"
-                                         @click="handleClick()">
+                                         :data-file-item="isInput && isFile ? 'input-file' : null"
+                                         :data-file-path="isInput && isFile ? value : null"
+                                         @contextmenu.prevent="openContextMenu($event)"
+                                         @click="handleClick($event)">
                                         <input type="checkbox"
                                                class="mr-2 w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-2 focus:ring-primary-500/20 cursor-pointer"
                                                :checked="isChecked"
-                                               @click.stop="toggle()">
+                                               @click.stop="toggle($event)">
                                         <span class="mr-2 flex items-center justify-center w-3" @click.stop="toggleFolder()" x-show="hasChildren && !loadingChildren" style="display: none;">
                                             <svg class="w-3 h-3 transition-transform duration-200" :class="isOpen ? 'rotate-90' : ''" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
@@ -492,11 +503,14 @@
                                             <div x-data="treeNode(child, true, 1)" class="tree-item">
                                                 <div class="tree-node flex items-center py-2 px-2 rounded-lg cursor-pointer select-none"
                                                      :style="'padding-left: 24px'"
-                                                     @click="handleClick()">
+                                                     :data-file-item="isInput && isFile ? 'input-file' : null"
+                                                     :data-file-path="isInput && isFile ? value : null"
+                                                     @contextmenu.prevent="openContextMenu($event)"
+                                                     @click="handleClick($event)">
                                                     <input type="checkbox"
                                                            class="mr-2 w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-2 focus:ring-primary-500/20 cursor-pointer"
                                                            :checked="isChecked"
-                                                           @click.stop="toggle()">
+                                                           @click.stop="toggle($event)">
                                                     <span class="mr-2 flex items-center justify-center w-3" @click.stop="toggleFolder()" x-show="hasChildren && !loadingChildren" style="display: none;">
                                                         <svg class="w-3 h-3 transition-transform duration-200" :class="isOpen ? 'rotate-90' : ''" fill="currentColor" viewBox="0 0 20 20">
                                                             <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
@@ -522,11 +536,14 @@
                                                         <div x-data="treeNode(grandchild, true, 2)" class="tree-item">
                                                             <div class="tree-node flex items-center py-2 px-2 rounded-lg cursor-pointer select-none"
                                                                  :style="'padding-left: 40px'"
-                                                                 @click="handleClick()">
+                                                                 :data-file-item="isInput && isFile ? 'input-file' : null"
+                                                                 :data-file-path="isInput && isFile ? value : null"
+                                                                 @contextmenu.prevent="openContextMenu($event)"
+                                                                 @click="handleClick($event)">
                                                                 <input type="checkbox"
                                                                        class="mr-2 w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-2 focus:ring-primary-500/20 cursor-pointer"
                                                                        :checked="isChecked"
-                                                                       @click.stop="toggle()">
+                                                                       @click.stop="toggle($event)">
                                                                 <span class="mr-2 flex items-center justify-center w-3" @click.stop="toggleFolder()" x-show="hasChildren && !loadingChildren" style="display: none;">
                                                                     <svg class="w-3 h-3 transition-transform duration-200" :class="isOpen ? 'rotate-90' : ''" fill="currentColor" viewBox="0 0 20 20">
                                                                         <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
@@ -552,11 +569,14 @@
                                                                     <div x-data="treeNode(ggchild, true, 3)" class="tree-item">
                                                                         <div class="tree-node flex items-center py-2 px-2 rounded-lg cursor-pointer select-none"
                                                                              :style="'padding-left: 56px'"
-                                                                             @click="handleClick()">
+                                                                             :data-file-item="isInput && isFile ? 'input-file' : null"
+                                                                             :data-file-path="isInput && isFile ? value : null"
+                                                                             @contextmenu.prevent="openContextMenu($event)"
+                                                                             @click="handleClick($event)">
                                                                             <input type="checkbox"
                                                                                    class="mr-2 w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-2 focus:ring-primary-500/20 cursor-pointer"
                                                                                    :checked="isChecked"
-                                                                                   @click.stop="toggle()">
+                                                                                   @click.stop="toggle($event)">
                                                                             <span class="mr-2 flex items-center justify-center w-3" @click.stop="toggleFolder()" x-show="hasChildren && !loadingChildren" style="display: none;">
                                                                                 <svg class="w-3 h-3 transition-transform duration-200" :class="isOpen ? 'rotate-90' : ''" fill="currentColor" viewBox="0 0 20 20">
                                                                                     <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
@@ -593,14 +613,17 @@
                         <div x-show="!loading.files && inputTreeData && inputTreeData.length > 0 && layoutPrefs.fileViewMode === 'thumb' && !ratingGroupMode" class="thumb-grid pb-2">
                             <template x-for="file in visibleInputFiles" :key="file.value || file.label">
                                 <button type="button"
-                                        @click="openPreviewFile(file)"
+                                        @click="handleFileActivate(file, $event)"
+                                        @contextmenu.prevent="openContextMenu(file, $event)"
+                                        data-file-item="input-file"
+                                        :data-file-path="file.value || file.key"
                                         class="thumb-card group relative rounded-lg border bg-white text-left overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
                                         :class="selectedItems.includes(file.value || file.key) ? 'border-primary-400 ring-2 ring-primary-200' : 'border-slate-200'">
                                     <div class="absolute left-2 top-2 z-10">
                                         <input type="checkbox"
                                                class="w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-2 focus:ring-primary-500/20 cursor-pointer"
                                                :checked="selectedItems.includes(file.value || file.key)"
-                                               @click.stop="toggleFileSelection(file)">
+                                               @click.stop="toggleFileSelection(file, $event)">
                                     </div>
                                     <img :src="thumbUrl(file)"
                                          loading="lazy"
@@ -634,14 +657,17 @@
                                     <div class="thumb-grid">
                                         <template x-for="file in group.children" :key="file.value || file.label">
                                             <button type="button"
-                                                    @click="openPreviewFile(file)"
+                                                    @click="handleFileActivate(file, $event)"
+                                                    @contextmenu.prevent="openContextMenu(file, $event)"
+                                                    data-file-item="input-file"
+                                                    :data-file-path="file.value || file.key"
                                                     class="thumb-card group relative rounded-lg border bg-white text-left overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
                                                     :class="selectedItems.includes(file.value || file.key) ? 'border-primary-400 ring-2 ring-primary-200' : 'border-slate-200'">
                                                 <div class="absolute left-2 top-2 z-10">
                                                     <input type="checkbox"
                                                            class="w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-2 focus:ring-primary-500/20 cursor-pointer"
                                                            :checked="selectedItems.includes(file.value || file.key)"
-                                                           @click.stop="toggleFileSelection(file)">
+                                                           @click.stop="toggleFileSelection(file, $event)">
                                                 </div>
                                                 <img :src="thumbUrl(file)"
                                                      loading="lazy"
@@ -1084,10 +1110,80 @@
                     开始执行
                 </button>
                 <p class="mt-2 text-center text-xs text-slate-400" x-show="!canStart">请保存配置并选择文件</p>
+
+                <!-- 缓存管理 -->
+                <div class="mt-4 pt-3 border-t border-slate-100">
+                    <div class="flex items-center justify-between cursor-pointer" @click="showCacheInfo = !showCacheInfo">
+                        <span class="text-[11px] text-slate-400 font-medium">💾 数据缓存</span>
+                        <svg class="w-3 h-3 text-slate-300 transition-transform" :class="showCacheInfo ? 'rotate-180' : ''" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                    <div x-show="showCacheInfo" class="mt-2 space-y-1.5">
+                        <div class="flex justify-between text-[11px]">
+                            <span class="text-slate-400">磁盘占用</span>
+                            <span class="font-medium"
+                                  :class="cacheStats.size_mb > cacheStats.max_size_mb * 0.8 ? 'text-amber-600' : 'text-slate-600'"
+                                  x-text="`${cacheStats.size_mb} / ${cacheStats.max_size_mb} MB`"></span>
+                        </div>
+                        <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div class="h-full rounded-full transition-all duration-300"
+                                 :class="cacheStats.size_mb > cacheStats.max_size_mb * 0.8 ? 'bg-amber-400' : 'bg-primary-400'"
+                                 :style="`width: ${Math.min(100, (cacheStats.size_mb / cacheStats.max_size_mb) * 100)}%`"></div>
+                        </div>
+                        <div class="flex justify-between text-[11px]">
+                            <span class="text-slate-400">EXIF 记录</span>
+                            <span class="text-slate-600" x-text="cacheStats.total_entries"></span>
+                        </div>
+                        <div class="flex justify-between text-[11px]">
+                            <span class="text-slate-400">地点标签</span>
+                            <span class="text-slate-600" x-text="cacheStats.custom_texts"></span>
+                        </div>
+                        <button @click="clearAllCache()"
+                                class="w-full mt-1 py-1.5 rounded-lg border border-danger-200 text-[11px] text-danger-500 hover:bg-danger-50 transition-all">
+                            清空缓存
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </main>
+
+<div x-show="marquee.active"
+     x-cloak
+     class="fixed z-50 pointer-events-none border border-primary-500 bg-primary-500/15 rounded"
+     :style="marqueeStyle"></div>
+
+<div x-show="contextMenu.show"
+     x-cloak
+     @click.outside="closeContextMenu()"
+     class="fixed z-50 w-48 rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10 py-1 text-xs text-slate-700"
+     :style="contextMenuStyle">
+    <div class="px-3 py-2 border-b border-slate-100">
+        <div class="font-semibold text-slate-800 truncate" x-text="contextMenu.file?.label || contextMenu.file?.name || '文件'"></div>
+        <div class="mt-0.5 text-[11px]"
+             :class="contextMenu.file?.rating ? 'text-amber-500' : 'text-slate-400'"
+             x-text="formatRatingLabel(contextMenu.file?.rating)"></div>
+    </div>
+    <button type="button" class="w-full px-3 py-2 text-left hover:bg-slate-50"
+            @click="contextPreview()">预览</button>
+    <button type="button" class="w-full px-3 py-2 text-left hover:bg-slate-50"
+            @click="contextSelectOnly()">仅选中此项</button>
+    <button type="button" class="w-full px-3 py-2 text-left hover:bg-slate-50"
+            @click="contextToggleSelection()"
+            x-text="contextMenu.file && selectedItems.includes(contextMenu.file.value || contextMenu.file.key) ? '取消选中' : '选中'"></button>
+    <button type="button" class="w-full px-3 py-2 text-left hover:bg-slate-50"
+            @click="contextSelectSameRating()">选中同星级</button>
+    <div class="my-1 border-t border-slate-100"></div>
+    <button type="button" class="w-full px-3 py-2 text-left hover:bg-slate-50"
+            @click="contextCopyPath()">复制路径</button>
+    <button type="button" class="w-full px-3 py-2 text-left hover:bg-slate-50"
+            @click="contextOpenLocation()">打开文件位置</button>
+    <div class="my-1 border-t border-slate-100"></div>
+    <button type="button" class="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-500"
+            @click="clearSelection()">清空选择</button>
+</div>
 
 <div class="splitter-log shrink-0" x-show="!debug.collapsed" @pointerdown="startPaneResize($event, 'log')" title="拖动调整日志高度"></div>
 <section class="shrink-0 border-t border-slate-200 bg-slate-950 text-slate-100"
@@ -1301,8 +1397,12 @@
                 return paths;
             },
 
-            toggle() {
+            toggle(event) {
                 const app = window.Alpine.store('app');
+                if (this.isInput && this.isFile) {
+                    app.toggleFileSelection(this.node, event || {});
+                    return;
+                }
                 const targetValues = this.getAllFileValues(this.node);
 
                 if (this.isChecked) {
@@ -1312,13 +1412,19 @@
                 }
             },
 
-            handleClick() {
+            handleClick(event) {
                 if (this.isFile) {
                     const app = window.Alpine.store('app');
-                    app.openPreviewFile(this.node);
+                    app.handleFileActivate(this.node, event || {});
                 } else if (this.hasChildren) {
                     this.toggleFolder();
                 }
+            },
+
+            openContextMenu(event) {
+                if (!this.isInput || !this.isFile) return;
+                const app = window.Alpine.store('app');
+                app.openContextMenu(this.node, event);
             },
 
             async toggleFolder() {
@@ -1406,6 +1512,17 @@
             visibleInputFileCount: 0,
             visibleInputFiles: [],
             visibleThumbGroups: [],
+            lastSelectedPath: '',
+            contextMenu: {show: false, x: 0, y: 0, file: null},
+            marquee: {
+                active: false,
+                startX: 0,
+                startY: 0,
+                x: 0,
+                y: 0,
+                baseSelected: [],
+                additive: false
+            },
             layoutPrefs: {
                 leftPane: 25,
                 centerPane: 50,
@@ -1415,6 +1532,8 @@
             },
             customTexts: {},
             watermarkFonts: {},
+            cacheStats: {size_mb: 0, total_entries: 0, custom_texts: 0, max_size_mb: 200},
+            showCacheInfo: false,
             preview: {url: '', name: '', path: '', isFile: false},
             aceEditor: null,
             // 底部居中信息水印 — 逐行设置
@@ -1497,6 +1616,18 @@
 
             get canStart() {
                 return this.isStatic && this.selectedItems.length > 0 && !this.progress.active;
+            },
+
+            get marqueeStyle() {
+                const left = Math.min(this.marquee.startX, this.marquee.x);
+                const top = Math.min(this.marquee.startY, this.marquee.y);
+                const width = Math.abs(this.marquee.x - this.marquee.startX);
+                const height = Math.abs(this.marquee.y - this.marquee.startY);
+                return `left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
+            },
+
+            get contextMenuStyle() {
+                return `left:${this.contextMenu.x}px;top:${this.contextMenu.y}px`;
             },
 
             get isBottomCenterMode() {
@@ -1712,6 +1843,8 @@
 
                 await this.fetchConfig();
                 await this.fetchFiles();
+                await this.loadCustomTextsFromCache();
+                await this.fetchCacheStats();
             },
 
             loadLayoutPrefs() {
@@ -2291,6 +2424,265 @@
                 this.selectedItems = [...new Set([...this.selectedItems, ...allFiles])];
             },
 
+            fileValue(file) {
+                return file?.value || file?.key || '';
+            },
+
+            getVisibleFileValues() {
+                return (this.visibleInputFiles || []).map(file => this.fileValue(file)).filter(Boolean);
+            },
+
+            getVisibleFileByValue(value) {
+                return (this.visibleInputFiles || []).find(file => this.fileValue(file) === value) || null;
+            },
+
+            setSelectedItemsKeepingHidden(visibleValues, selectedVisibleValues) {
+                const visibleSet = new Set(visibleValues);
+                const nextVisible = new Set(selectedVisibleValues);
+                const hiddenSelected = this.selectedItems.filter(value => !visibleSet.has(value));
+                this.selectedItems = [...new Set([...hiddenSelected, ...nextVisible])];
+            },
+
+            setSingleSelection(value) {
+                if (!value) return;
+                this.selectedItems = [value];
+                this.lastSelectedPath = value;
+                this.addDebugLog('info', `selection: single ${value}`);
+            },
+
+            clearSelection() {
+                this.selectedItems = [];
+                this.lastSelectedPath = '';
+                this.closeContextMenu();
+                this.addDebugLog('info', 'selection: clear');
+            },
+
+            selectRangeTo(file, additive = false) {
+                const value = this.fileValue(file);
+                const visibleValues = this.getVisibleFileValues();
+                if (!value || visibleValues.length === 0) return;
+                const end = visibleValues.indexOf(value);
+                const start = visibleValues.indexOf(this.lastSelectedPath);
+                if (start < 0 || end < 0) {
+                    if (additive) {
+                        this.selectedItems = [...new Set([...this.selectedItems, value])];
+                    } else {
+                        this.setSelectedItemsKeepingHidden(visibleValues, [value]);
+                    }
+                    this.lastSelectedPath = value;
+                    return;
+                }
+                const low = Math.min(start, end);
+                const high = Math.max(start, end);
+                const rangeValues = visibleValues.slice(low, high + 1);
+                if (additive) {
+                    this.selectedItems = [...new Set([...this.selectedItems, ...rangeValues])];
+                } else {
+                    this.setSelectedItemsKeepingHidden(visibleValues, rangeValues);
+                }
+                this.addDebugLog('info', `selection: range ${rangeValues.length}`);
+            },
+
+            selectFile(file, event = {}) {
+                const value = this.fileValue(file);
+                if (!value) return;
+                const additive = !!(event.ctrlKey || event.metaKey);
+                const range = !!event.shiftKey;
+
+                if (range) {
+                    this.selectRangeTo(file, additive);
+                    this.lastSelectedPath = value;
+                    return;
+                }
+
+                if (additive) {
+                    if (this.selectedItems.includes(value)) {
+                        this.selectedItems = this.selectedItems.filter(v => v !== value);
+                    } else {
+                        this.selectedItems = [...new Set([...this.selectedItems, value])];
+                    }
+                    this.lastSelectedPath = value;
+                    this.addDebugLog('info', `selection: toggle ${value}`);
+                    return;
+                }
+
+                if (event.fromCheckbox) {
+                    if (this.selectedItems.includes(value)) {
+                        this.selectedItems = this.selectedItems.filter(v => v !== value);
+                    } else {
+                        this.selectedItems = [...new Set([...this.selectedItems, value])];
+                    }
+                    this.lastSelectedPath = value;
+                    return;
+                }
+
+                this.lastSelectedPath = value;
+            },
+
+            handleFileActivate(file, event = {}) {
+                if (!file || !file.is_file) return;
+                if (event.shiftKey || event.ctrlKey || event.metaKey) {
+                    this.selectFile(file, event);
+                } else {
+                    this.lastSelectedPath = this.fileValue(file) || this.lastSelectedPath;
+                }
+                this.closeContextMenu();
+                this.openPreviewFile(file);
+            },
+
+            toggleFileSelection(file, event = {}) {
+                this.selectFile(file, {
+                    fromCheckbox: true,
+                    shiftKey: !!event.shiftKey,
+                    ctrlKey: !!event.ctrlKey,
+                    metaKey: !!event.metaKey
+                });
+            },
+
+            handleFileListKeydown(event) {
+                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+                    event.preventDefault();
+                    const visibleValues = this.getVisibleFileValues();
+                    this.selectedItems = [...new Set([...this.selectedItems, ...visibleValues])];
+                    if (visibleValues.length > 0) {
+                        this.lastSelectedPath = visibleValues[visibleValues.length - 1];
+                    }
+                    this.addDebugLog('info', `selection: ctrl+a visible=${visibleValues.length}`);
+                }
+            },
+
+            startMarqueeSelection(event) {
+                if (event.button !== 0 || !this.inputTreeData || this.inputTreeData.length === 0) return;
+                if (event.target.closest('button,input,select,textarea,a,.splitter-horizontal,.splitter-vertical')) return;
+                if (event.target.closest('[data-file-item="input-file"]')) return;
+
+                this.closeContextMenu();
+                this.marquee.active = true;
+                this.marquee.startX = event.clientX;
+                this.marquee.startY = event.clientY;
+                this.marquee.x = event.clientX;
+                this.marquee.y = event.clientY;
+                this.marquee.baseSelected = [...this.selectedItems];
+                this.marquee.additive = !!(event.ctrlKey || event.metaKey);
+                event.preventDefault();
+
+                const onMove = (moveEvent) => {
+                    if (!this.marquee.active) return;
+                    this.marquee.x = moveEvent.clientX;
+                    this.marquee.y = moveEvent.clientY;
+                    this.updateMarqueeSelection();
+                };
+
+                const onUp = () => {
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                    const count = this.selectedItems.length;
+                    this.marquee.active = false;
+                    this.addDebugLog('info', `selection: marquee total=${count}`);
+                };
+
+                window.addEventListener('pointermove', onMove);
+                window.addEventListener('pointerup', onUp, {once: true});
+            },
+
+            updateMarqueeSelection() {
+                const left = Math.min(this.marquee.startX, this.marquee.x);
+                const right = Math.max(this.marquee.startX, this.marquee.x);
+                const top = Math.min(this.marquee.startY, this.marquee.y);
+                const bottom = Math.max(this.marquee.startY, this.marquee.y);
+                if ((right - left) < 3 && (bottom - top) < 3) return;
+
+                const area = this.$refs.inputFileArea;
+                const nodes = area ? area.querySelectorAll('[data-file-item="input-file"][data-file-path]') : [];
+                const hitValues = [];
+                nodes.forEach(node => {
+                    const rect = node.getBoundingClientRect();
+                    const hit = rect.left <= right && rect.right >= left && rect.top <= bottom && rect.bottom >= top;
+                    if (hit) hitValues.push(node.dataset.filePath);
+                });
+
+                const visibleValues = this.getVisibleFileValues();
+                if (this.marquee.additive) {
+                    this.selectedItems = [...new Set([...this.marquee.baseSelected, ...hitValues])];
+                } else {
+                    const hiddenSelected = this.marquee.baseSelected.filter(value => !visibleValues.includes(value));
+                    this.selectedItems = [...new Set([...hiddenSelected, ...hitValues])];
+                }
+                if (hitValues.length > 0) {
+                    this.lastSelectedPath = hitValues[hitValues.length - 1];
+                }
+            },
+
+            openContextMenu(file, event) {
+                if (!file || !file.is_file) return;
+                const width = 192;
+                const height = 230;
+                this.contextMenu = {
+                    show: true,
+                    x: Math.min(event.clientX, window.innerWidth - width - 8),
+                    y: Math.min(event.clientY, window.innerHeight - height - 8),
+                    file
+                };
+                this.lastSelectedPath = this.fileValue(file) || this.lastSelectedPath;
+                this.addDebugLog('info', `contextmenu: ${this.fileValue(file)}`);
+            },
+
+            closeContextMenu() {
+                this.contextMenu.show = false;
+            },
+
+            contextPreview() {
+                if (this.contextMenu.file) this.openPreviewFile(this.contextMenu.file);
+                this.closeContextMenu();
+            },
+
+            contextSelectOnly() {
+                const value = this.fileValue(this.contextMenu.file);
+                if (value) this.setSingleSelection(value);
+                this.closeContextMenu();
+            },
+
+            contextToggleSelection() {
+                if (this.contextMenu.file) this.selectFile(this.contextMenu.file, {fromCheckbox: true});
+                this.closeContextMenu();
+            },
+
+            contextSelectSameRating() {
+                const file = this.contextMenu.file;
+                if (!file) return;
+                const rating = this.normalizeRatingValue(file.rating);
+                const matches = (this.visibleInputFiles || [])
+                    .filter(item => this.normalizeRatingValue(item.rating) === rating)
+                    .map(item => this.fileValue(item))
+                    .filter(Boolean);
+                this.selectedItems = [...new Set([...this.selectedItems, ...matches])];
+                this.closeContextMenu();
+                this.addDebugLog('info', `selection: same rating ${rating || 'unrated'} count=${matches.length}`);
+            },
+
+            async contextCopyPath() {
+                const value = this.fileValue(this.contextMenu.file);
+                if (!value) return;
+                try {
+                    await navigator.clipboard.writeText(value);
+                    this.toast('路径已复制', 'success');
+                } catch (e) {
+                    this.toast('复制失败: ' + e.message, 'error');
+                }
+                this.closeContextMenu();
+            },
+
+            contextOpenLocation() {
+                const value = this.fileValue(this.contextMenu.file);
+                if (!value) return;
+                const dir = value.replace(/[/\\][^/\\]*$/, '');
+                // 尝试通过后端 API 打开文件管理器
+                fetch('/api/v1/open-folder?path=' + encodeURIComponent(dir))
+                    .catch(() => {});
+                this.closeContextMenu();
+                this.toast('正在打开文件位置...', 'info');
+            },
+
             openPreviewFile(file) {
                 if (!file || !file.is_file) return;
                 const value = file.value || file.key;
@@ -2304,16 +2696,6 @@
                 this.preview.renderedObjectUrl = '';
                 this.preview.isFile = true;
                 this.addDebugLog('info', `预览文件: ${this.preview.name} -> ${value}`);
-            },
-
-            toggleFileSelection(file) {
-                const value = file?.value || file?.key;
-                if (!value) return;
-                if (this.selectedItems.includes(value)) {
-                    this.selectedItems = this.selectedItems.filter(v => v !== value);
-                } else {
-                    this.selectedItems = [...new Set([...this.selectedItems, value])];
-                }
             },
 
             thumbUrl(file) {
@@ -2345,6 +2727,61 @@
                 }
                 this.addDebugLog('info', `设置自定义内容: ${this.preview.name || this.preview.path} -> ${value || '(空)'}`);
                 this.resetPreviewImage();
+                // 保存到服务端缓存
+                this.saveCustomTextToCache(this.preview.path, value || '');
+            },
+
+            async saveCustomTextToCache(path, text) {
+                try {
+                    await fetch('/api/v1/cache/custom-text', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({path, text})
+                    });
+                } catch (_) { /* 静默失败 */ }
+            },
+
+            async loadCustomTextsFromCache() {
+                try {
+                    const res = await fetch('/api/v1/cache/custom-texts');
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const texts = data.custom_texts || {};
+                    // 合并缓存中的自定义文本到前端状态
+                    Object.entries(texts).forEach(([path, text]) => {
+                        if (text && !this.customTexts[path]) {
+                            this.customTexts[path] = text;
+                        }
+                    });
+                    this.addDebugLog('info', `从缓存加载 ${Object.keys(texts).length} 条自定义文本`);
+                    this.applyInputTreeView();
+                } catch (e) {
+                    this.addDebugLog('error', '加载自定义文本缓存失败: ' + e.message);
+                }
+            },
+
+            async fetchCacheStats() {
+                try {
+                    const res = await fetch('/api/v1/cache/stats');
+                    if (res.ok) {
+                        this.cacheStats = await res.json();
+                    }
+                } catch (_) {}
+            },
+
+            async clearAllCache() {
+                if (!confirm(`确定要清空所有缓存吗？\n\n当前缓存: ${this.cacheStats.size_mb} MB, ${this.cacheStats.total_entries} 条 EXIF 记录, ${this.cacheStats.custom_texts} 条自定义文本`)) return;
+                try {
+                    const res = await fetch('/api/v1/cache', { method: 'DELETE' });
+                    if (res.ok) {
+                        this.toast('缓存已清空', 'success');
+                        await this.fetchCacheStats();
+                    } else {
+                        this.toast('清空失败', 'error');
+                    }
+                } catch (e) {
+                    this.toast('清空失败: ' + e.message, 'error');
+                }
             },
 
             setCurrentWatermarkFont(value) {
