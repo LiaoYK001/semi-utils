@@ -175,7 +175,15 @@
         }
 
         .thumb-card {
-            aspect-ratio: 1 / 1.22;
+            height: 14.25rem;
+        }
+
+        .thumb-card-image {
+            height: 10rem;
+        }
+
+        .thumb-card-meta {
+            height: 4.25rem;
         }
 
         @media (max-width: 1023px) {
@@ -582,11 +590,11 @@
                             </template>
                         </div>
 
-                        <div x-show="!loading.files && inputTreeData && inputTreeData.length > 0 && layoutPrefs.fileViewMode === 'thumb'" class="thumb-grid pb-2">
+                        <div x-show="!loading.files && inputTreeData && inputTreeData.length > 0 && layoutPrefs.fileViewMode === 'thumb' && !ratingGroupMode" class="thumb-grid pb-2">
                             <template x-for="file in visibleInputFiles" :key="file.value || file.label">
                                 <button type="button"
                                         @click="openPreviewFile(file)"
-                                        class="thumb-card group relative rounded-lg border bg-white text-left overflow-hidden shadow-sm hover:shadow-md transition-all"
+                                        class="thumb-card group relative rounded-lg border bg-white text-left overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
                                         :class="selectedItems.includes(file.value || file.key) ? 'border-primary-400 ring-2 ring-primary-200' : 'border-slate-200'">
                                     <div class="absolute left-2 top-2 z-10">
                                         <input type="checkbox"
@@ -596,18 +604,64 @@
                                     </div>
                                     <img :src="thumbUrl(file)"
                                          loading="lazy"
-                                         class="h-[72%] w-full object-cover bg-slate-100"
+                                         class="thumb-card-image w-full object-cover bg-slate-100 shrink-0"
                                          @error="$el.style.display='none'">
-                                    <div class="p-2 space-y-1">
+                                    <div class="thumb-card-meta p-2 space-y-1 overflow-hidden">
                                         <div class="text-[11px] font-medium text-slate-700 truncate" x-text="file.label"></div>
-                                        <div class="flex items-center justify-between gap-1">
-                                            <span class="text-[10px] truncate text-violet-600" x-text="file._customText || ''"></span>
-                                            <span class="text-[10px] shrink-0"
-                                                  :class="file.rating ? 'text-amber-500' : 'text-slate-300'"
-                                                  x-text="formatRatingLabel(file.rating)"></span>
+                                        <div class="min-h-[1.1rem]">
+                                            <span x-show="file._customText"
+                                                  class="inline-flex max-w-full text-[10px] px-1.5 py-px rounded-full bg-violet-50 border border-violet-100 text-violet-600 truncate"
+                                                  x-text="file._customText"></span>
                                         </div>
+                                        <div class="text-[10px] leading-none"
+                                             :class="file.rating ? 'text-amber-500' : 'text-slate-300'"
+                                             x-text="formatRatingLabel(file.rating)"></div>
                                     </div>
                                 </button>
+                            </template>
+                        </div>
+
+                        <div x-show="!loading.files && inputTreeData && inputTreeData.length > 0 && layoutPrefs.fileViewMode === 'thumb' && ratingGroupMode"
+                             class="space-y-4 pb-2">
+                            <template x-for="group in visibleThumbGroups" :key="group.value || group.label">
+                                <section class="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
+                                    <div class="mb-3 flex items-center justify-between">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs font-semibold text-amber-700" x-text="group.label"></span>
+                                            <span class="text-[11px] text-slate-400" x-text="`${group.children.length} 张`"></span>
+                                        </div>
+                                    </div>
+                                    <div class="thumb-grid">
+                                        <template x-for="file in group.children" :key="file.value || file.label">
+                                            <button type="button"
+                                                    @click="openPreviewFile(file)"
+                                                    class="thumb-card group relative rounded-lg border bg-white text-left overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
+                                                    :class="selectedItems.includes(file.value || file.key) ? 'border-primary-400 ring-2 ring-primary-200' : 'border-slate-200'">
+                                                <div class="absolute left-2 top-2 z-10">
+                                                    <input type="checkbox"
+                                                           class="w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-2 focus:ring-primary-500/20 cursor-pointer"
+                                                           :checked="selectedItems.includes(file.value || file.key)"
+                                                           @click.stop="toggleFileSelection(file)">
+                                                </div>
+                                                <img :src="thumbUrl(file)"
+                                                     loading="lazy"
+                                                     class="thumb-card-image w-full object-cover bg-slate-100 shrink-0"
+                                                     @error="$el.style.display='none'">
+                                                <div class="thumb-card-meta p-2 space-y-1 overflow-hidden">
+                                                    <div class="text-[11px] font-medium text-slate-700 truncate" x-text="file.label"></div>
+                                                    <div class="min-h-[1.1rem]">
+                                                        <span x-show="file._customText"
+                                                              class="inline-flex max-w-full text-[10px] px-1.5 py-px rounded-full bg-violet-50 border border-violet-100 text-violet-600 truncate"
+                                                              x-text="file._customText"></span>
+                                                    </div>
+                                                    <div class="text-[10px] leading-none"
+                                                          :class="file.rating ? 'text-amber-500' : 'text-slate-300'"
+                                                          x-text="formatRatingLabel(file.rating)"></div>
+                                                </div>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </section>
                             </template>
                         </div>
                         <div x-show="!loading.files && inputTreeData && inputTreeData.length > 0 && layoutPrefs.fileViewMode === 'thumb' && visibleInputFiles.length === 0"
@@ -1351,6 +1405,7 @@
             ratingGroupMode: false,
             visibleInputFileCount: 0,
             visibleInputFiles: [],
+            visibleThumbGroups: [],
             layoutPrefs: {
                 leftPane: 25,
                 centerPane: 50,
@@ -2210,6 +2265,7 @@
 
                 this.inputTreeData = visibleTree;
                 this.visibleInputFiles = this.collectInputFiles(visibleTree);
+                this.visibleThumbGroups = this.ratingGroupMode ? visibleTree.filter(node => node.children && node.children.length > 0) : [];
                 this.visibleInputFileCount = this.visibleInputFiles.length;
                 this.treeKey = (this.treeKey || 0) + 1;
                 this.addDebugLog(
