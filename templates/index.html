@@ -292,6 +292,19 @@
                            :class="config.override_existed ? 'accent-red-600' : 'accent-primary-500'">
                 </div>
 
+                <div class="flex items-center gap-2">
+                    <label for="preserve_exif"
+                           class="config-label cursor-pointer transition-colors duration-200"
+                           :class="config.preserve_exif ? 'text-primary-600 font-medium' : 'text-slate-400'">
+                        保留 EXIF 元数据
+                    </label>
+                    <input type="checkbox"
+                           x-model="config.preserve_exif"
+                           :disabled="isStatic"
+                           id="preserve_exif"
+                           class="w-4 h-4 rounded border-slate-300 focus:ring-2 disabled:opacity-50 cursor-pointer transition-all duration-200 accent-primary-500">
+                </div>
+
                 <div class="space-y-1">
                     <label class="config-label">输出质量: <span x-text="config.quality" class="text-primary-600 font-bold"></span>%</label>
                     <div class="flex items-center gap-3">
@@ -1498,7 +1511,7 @@
         return {
             isStatic: true,
             loading: {files: false, process: false, preview: false},
-            config: {input_folder: '', output_folder: '', template: '{}', template_name: '', quality: 100, override_existed: false},
+            config: {input_folder: '', output_folder: '', template: '{}', template_name: '', quality: 100, override_existed: false, preserve_exif: true},
             availableTemplates: [],
             availableFonts: [],
             rawInputTreeData: [],

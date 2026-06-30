@@ -12,7 +12,7 @@ from PIL import Image, ImageColor, ImageOps
 
 from core.configs import load_config
 from core.logger import logger
-from core.util import get_exif, log_rt
+from core.util import get_exif, get_exif_bytes, log_rt
 
 
 class PipelineContext(MutableMapping):
@@ -324,6 +324,18 @@ def start_process(data: List[dict], input_path: str = None, output_path: str = N
 
     nodes[-1].save_buffer("final").success()
     if output_path is not None:
-        nodes[-1].get_buffer()[0].convert("RGB").save(output_path, quality=load_config().getint('DEFAULT', 'quality'), subsampling=load_config().getint('DEFAULT', 'subsampling'))
+        cfg = load_config()
+        quality = cfg.getint('DEFAULT', 'quality')
+        subsampling = cfg.getint('DEFAULT', 'subsampling')
+        preserve_exif = cfg.getboolean('DEFAULT', 'preserve_exif', fallback=True)
+        final_img = nodes[-1].get_buffer()[0].convert("RGB")
+
+        save_kwargs = {'quality': quality, 'subsampling': subsampling}
+        if preserve_exif:
+            exif_bytes = get_exif_bytes(input_path)
+            if exif_bytes:
+                save_kwargs['exif'] = exif_bytes
+
+        final_img.save(output_path, **save_kwargs)
         logger.success(f"Generated new image: {output_path}")
     return nodes[-1].get_buffer()[0]

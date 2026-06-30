@@ -39,6 +39,15 @@ else:
 _RATING_CACHE = {}
 
 
+def get_exif_bytes(path: str) -> bytes | None:
+    """读取原始 EXIF 字节（用于回写到输出图片）"""
+    try:
+        with Image.open(path) as img:
+            return img.info.get('exif')
+    except Exception:
+        return None
+
+
 def _file_stat(path: str) -> tuple[int, int] | None:
     """获取文件的 mtime_ns 和 size，用于缓存键"""
     try:

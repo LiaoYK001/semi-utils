@@ -18,8 +18,9 @@ from core.configs import fonts_dir, load_config, load_project_info
 PRESETS_PATH = Path('config/presets.json')
 _THUMB_CACHE = {}
 from core.logger import logger, init_from_config
-from core.util import (list_files, list_children, log_rt, get_exif, convert_heic_to_jpeg,
-                       get_template, get_template_content, save_template, list_templates, flush_cache)
+from core.util import (list_files, list_children, log_rt, get_exif, get_exif_bytes,
+                       convert_heic_to_jpeg, get_template, get_template_content,
+                       save_template, list_templates, flush_cache)
 from core.cache import (get_cache_stats, get_cache_size_mb, get_cache_size_bytes,
                         get_custom_text, get_all_custom_texts, set_custom_text,
                         clear_cache, enforce_cache_size_limit, MAX_CACHE_SIZE)
@@ -79,6 +80,7 @@ def get_config():
         'input_folder': config.get('DEFAULT', 'input_folder'),
         'output_folder': config.get('DEFAULT', 'output_folder'),
         'override_existed': config.getboolean('DEFAULT', 'override_existed'),
+        'preserve_exif': config.getboolean('DEFAULT', 'preserve_exif', fallback=True),
         'template_name': template_name,
         'template': template,
         'quality': config.get('DEFAULT', 'quality'),
@@ -104,6 +106,8 @@ def save_config():
             config.set('DEFAULT', 'output_folder', data['output_folder'])
         if 'override_existed' in data:
             config.set('DEFAULT', 'override_existed', str(data['override_existed']))
+        if 'preserve_exif' in data:
+            config.set('DEFAULT', 'preserve_exif', str(data['preserve_exif']))
         if 'quality' in data:
             config.set('DEFAULT', 'quality', data['quality'])
         if 'template_name' in data:
@@ -617,8 +621,16 @@ def render_preview_api():
             image = image.convert('RGB')
 
         buffer = BytesIO()
-        image.save(buffer, format='JPEG', quality=config.getint('DEFAULT', 'quality'),
-                   subsampling=config.getint('DEFAULT', 'subsampling'))
+        save_kwargs = {
+            'format': 'JPEG',
+            'quality': config.getint('DEFAULT', 'quality'),
+            'subsampling': config.getint('DEFAULT', 'subsampling'),
+        }
+        if config.getboolean('DEFAULT', 'preserve_exif', fallback=True):
+            exif_bytes = get_exif_bytes(input_path)
+            if exif_bytes:
+                save_kwargs['exif'] = exif_bytes
+        image.save(buffer, **save_kwargs)
         buffer.seek(0)
         response = send_file(buffer, mimetype='image/jpeg', download_name=f'preview-{int(time.time())}.jpg')
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
