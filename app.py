@@ -23,7 +23,8 @@ from core.util import (list_files, list_children, log_rt, get_exif, get_exif_byt
                        save_template, list_templates, flush_cache)
 from core.cache import (get_cache_stats, get_cache_size_mb, get_cache_size_bytes,
                         get_custom_text, get_all_custom_texts, set_custom_text,
-                        clear_cache, enforce_cache_size_limit, MAX_CACHE_SIZE)
+                        batch_set_custom_texts, clear_cache, clear_custom_texts,
+                        enforce_cache_size_limit, MAX_CACHE_SIZE)
 from processor.core import start_process
 
 # 加载配置
@@ -81,6 +82,7 @@ def get_config():
         'output_folder': config.get('DEFAULT', 'output_folder'),
         'override_existed': config.getboolean('DEFAULT', 'override_existed'),
         'preserve_exif': config.getboolean('DEFAULT', 'preserve_exif', fallback=True),
+        'scan_subdirectories': config.getboolean('DEFAULT', 'scan_subdirectories', fallback=False),
         'template_name': template_name,
         'template': template,
         'quality': config.get('DEFAULT', 'quality'),
@@ -108,6 +110,8 @@ def save_config():
             config.set('DEFAULT', 'override_existed', str(data['override_existed']))
         if 'preserve_exif' in data:
             config.set('DEFAULT', 'preserve_exif', str(data['preserve_exif']))
+        if 'scan_subdirectories' in data:
+            config.set('DEFAULT', 'scan_subdirectories', str(data['scan_subdirectories']))
         if 'quality' in data:
             config.set('DEFAULT', 'quality', data['quality'])
         if 'template_name' in data:
@@ -163,17 +167,26 @@ def list_input_files():
 
     input_folder = config.get('DEFAULT', 'input_folder')
     output_folder = config.get('DEFAULT', 'output_folder')
+    scan_subdirectories = config.getboolean('DEFAULT', 'scan_subdirectories', fallback=False)
 
     logger.debug(f"开始扫描文件系统(顶层), input={input_folder}, output={output_folder}")
 
     # 扫描输入文件夹（仅顶层）
     t1 = time.time()
-    input_children = list_children(input_folder, suffixes)
+    input_children = (
+        list_files(input_folder, suffixes)
+        if scan_subdirectories
+        else list_children(input_folder, suffixes, include_dirs=False)
+    )
     logger.debug(f"输入文件夹扫描完成, 耗时: {time.time() - t1:.2f}s, 顶层节点数: {len(input_children)}")
 
     # 扫描输出文件夹（仅顶层）
     t2 = time.time()
-    output_children = list_children(output_folder, suffixes)
+    output_children = (
+        list_files(output_folder, suffixes)
+        if scan_subdirectories
+        else list_children(output_folder, suffixes, include_dirs=False)
+    )
     logger.debug(f"输出文件夹扫描完成, 耗时: {time.time() - t2:.2f}s, 顶层节点数: {len(output_children)}")
 
     logger.debug(f"文件扫描总耗时: {time.time() - start:.2f}s")
@@ -253,11 +266,11 @@ def get_cache_info():
 
 @api.route('/api/v1/cache', methods=['DELETE'])
 def clear_cache_api():
-    """手动清空所有缓存（EXIF + 自定义文本）"""
+    """清空 EXIF/星级等文件缓存，保留用户地点标签。"""
     try:
         clear_cache()
-        logger.info('缓存已手动清空')
-        return jsonify({'message': '缓存已清空'}), 200
+        logger.info('文件缓存已手动清空，地点标签已保留')
+        return jsonify({'message': 'cache cleared', 'custom_texts_preserved': True}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -267,6 +280,27 @@ def get_all_custom_texts_api():
     """获取所有已保存的自定义文本（地点等）"""
     texts = get_all_custom_texts()
     return jsonify({'custom_texts': texts})
+
+
+@api.route('/api/v1/cache/custom-texts', methods=['POST'])
+def save_custom_texts_api():
+    """Batch save custom location texts. Empty text deletes that path."""
+    data = request.get_json()
+    if not data or 'customTexts' not in data or not isinstance(data['customTexts'], dict):
+        return jsonify({'error': 'Missing customTexts'}), 400
+
+    batch_set_custom_texts(data['customTexts'])
+    return jsonify({'message': 'saved', 'count': len(data['customTexts'])}), 200
+
+
+@api.route('/api/v1/cache/custom-texts', methods=['DELETE'])
+def clear_custom_texts_api():
+    """Clear user custom location texts."""
+    try:
+        clear_custom_texts()
+        return jsonify({'message': 'custom texts cleared'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @api.route('/api/v1/cache/custom-text', methods=['POST'])
@@ -438,13 +472,14 @@ def handle_process():
             with Image.open(input_path) as source_image:
                 image_size = {'width': source_image.width, 'height': source_image.height}
             # 开始处理
+            custom_text = custom_texts.get(input_path) or get_custom_text(input_path) or ''
             context = {
                 'exif': get_exif(input_path),
                 'image_size': image_size,
                 'filename': _input_path.stem,
                 'file_dir': str(_input_path.parent.absolute()).replace('\\', '/'),
                 'file_path': str(_input_path).replace('\\', '/'),
-                'custom_text': custom_texts.get(input_path, ''),
+                'custom_text': custom_text,
                 'watermark_font': watermark_fonts.get(input_path, data.get('watermarkFont', '')),
                 'files': input_files
             }
@@ -605,13 +640,14 @@ def render_preview_api():
         _input_path = Path(input_path)
         with Image.open(input_path) as source_image:
             image_size = {'width': source_image.width, 'height': source_image.height}
+        custom_text = data.get('customText') or get_custom_text(input_path) or ''
         context = {
             'exif': get_exif(input_path),
             'image_size': image_size,
             'filename': _input_path.stem,
             'file_dir': str(_input_path.parent.absolute()).replace('\\', '/'),
             'file_path': str(_input_path).replace('\\', '/'),
-            'custom_text': data.get('customText', ''),
+            'custom_text': custom_text,
             'watermark_font': data.get('watermarkFont', ''),
             'files': [input_path],
         }

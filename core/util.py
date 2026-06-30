@@ -347,7 +347,7 @@ def get_image_rating(path):
     return rating
 
 
-def list_children(path: str, suffixes: set[str]):
+def list_children(path: str, suffixes: set[str], include_dirs: bool = True):
     """
     列出指定目录下的直接子项（不递归），用于树形懒加载。
 
@@ -369,7 +369,7 @@ def list_children(path: str, suffixes: set[str]):
         dirs = sorted(
             [i for i in items if i.is_dir() and not i.name.startswith('.') and not i.is_symlink()],
             key=lambda x: x.name.lower()
-        )
+        ) if include_dirs else []
         files = sorted(
             [i for i in items if i.is_file() and not i.name.startswith('.') and i.suffix.lower() in suffixes],
             key=lambda x: (x.stat().st_mtime, x.name.lower()),

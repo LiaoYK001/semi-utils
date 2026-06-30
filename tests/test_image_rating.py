@@ -7,6 +7,7 @@ from PIL import Image
 from core import util
 from core.util import (
     get_image_rating,
+    list_children,
     list_files,
     normalize_rating,
     normalize_rating_percent,
@@ -89,6 +90,20 @@ class ImageRatingTest(unittest.TestCase):
                     }
                 ],
             )
+
+    def test_list_children_can_skip_directory_nodes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            nested = root / "nested"
+            nested.mkdir()
+            Image.new("RGB", (8, 8), "white").save(root / "top.jpg")
+            Image.new("RGB", (8, 8), "white").save(nested / "deep.jpg")
+
+            tree = list_children(str(root), {".jpg"}, include_dirs=False)
+
+            self.assertEqual(len(tree), 1)
+            self.assertEqual(tree[0]["label"], "top.jpg")
+            self.assertTrue(tree[0]["is_file"])
 
 
 if __name__ == "__main__":

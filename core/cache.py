@@ -331,11 +331,21 @@ def clear_cache():
     try:
         conn = _get_conn()
         conn.execute('DELETE FROM file_cache')
-        conn.execute('DELETE FROM custom_text_cache')
         conn.commit()
         # 压缩数据库文件
         conn.execute('VACUUM')
         conn.commit()
-        logger.info('cache cleared and vacuumed')
+        logger.info('file cache cleared and vacuumed')
     except Exception as e:
         logger.error(f'clear_cache error: {e}')
+
+
+def clear_custom_texts():
+    """Clear user custom location texts."""
+    try:
+        conn = _get_conn()
+        conn.execute('DELETE FROM custom_text_cache')
+        conn.commit()
+        logger.info('custom texts cleared')
+    except Exception as e:
+        logger.error(f'clear_custom_texts error: {e}')

@@ -305,6 +305,19 @@
                            class="w-4 h-4 rounded border-slate-300 focus:ring-2 disabled:opacity-50 cursor-pointer transition-all duration-200 accent-primary-500">
                 </div>
 
+                <div class="flex items-center gap-2">
+                    <label for="scan_subdirectories"
+                           class="config-label cursor-pointer transition-colors duration-200"
+                           :class="config.scan_subdirectories ? 'text-primary-600 font-medium' : 'text-slate-400'">
+                        扫描子目录
+                    </label>
+                    <input type="checkbox"
+                           x-model="config.scan_subdirectories"
+                           :disabled="isStatic"
+                           id="scan_subdirectories"
+                           class="w-4 h-4 rounded border-slate-300 focus:ring-2 disabled:opacity-50 cursor-pointer transition-all duration-200 accent-primary-500">
+                </div>
+
                 <div class="space-y-1">
                     <label class="config-label">输出质量: <span x-text="config.quality" class="text-primary-600 font-bold"></span>%</label>
                     <div class="flex items-center gap-3">
@@ -1149,12 +1162,16 @@
                             <span class="text-slate-600" x-text="cacheStats.total_entries"></span>
                         </div>
                         <div class="flex justify-between text-[11px]">
-                            <span class="text-slate-400">地点标签</span>
+                            <span class="text-slate-400">已保存地点标签</span>
                             <span class="text-slate-600" x-text="cacheStats.custom_texts"></span>
                         </div>
                         <button @click="clearAllCache()"
                                 class="w-full mt-1 py-1.5 rounded-lg border border-danger-200 text-[11px] text-danger-500 hover:bg-danger-50 transition-all">
-                            清空缓存
+                            清空 EXIF/星级缓存
+                        </button>
+                        <button @click="clearCustomTextCache()"
+                                class="w-full mt-1 py-1.5 rounded-lg border border-slate-200 text-[11px] text-slate-500 hover:bg-slate-50 transition-all">
+                            清空地点标签
                         </button>
                     </div>
                 </div>
@@ -1511,7 +1528,7 @@
         return {
             isStatic: true,
             loading: {files: false, process: false, preview: false},
-            config: {input_folder: '', output_folder: '', template: '{}', template_name: '', quality: 100, override_existed: false, preserve_exif: true},
+            config: {input_folder: '', output_folder: '', template: '{}', template_name: '', quality: 100, override_existed: false, preserve_exif: true, scan_subdirectories: false},
             availableTemplates: [],
             availableFonts: [],
             rawInputTreeData: [],
@@ -1810,21 +1827,25 @@
                 this.toast(`已删除预设: ${name}`, 'success');
             },
 
-            applyPresetToSelected(presetText) {
+            async applyPresetToSelected(presetText) {
                 if (!presetText) return;
                 let count = 0;
+                const batch = {};
                 this.selectedItems.forEach(path => {
                     this.customTexts[path] = presetText;
+                    batch[path] = presetText;
                     count++;
                 });
+                await this.saveCustomTextsToCache(batch);
                 this.resetPreviewImage();
                 this.applyInputTreeView();
                 this.toast(`已将 "${presetText}" 应用到 ${count} 个文件`, 'success');
             },
 
-            applyPresetToCurrent(presetText) {
+            async applyPresetToCurrent(presetText) {
                 if (!this.preview.path || !presetText) return;
                 this.customTexts[this.preview.path] = presetText;
+                await this.saveCustomTextToCache(this.preview.path, presetText);
                 this.resetPreviewImage();
                 this.applyInputTreeView();
                 this.toast(`已应用: ${presetText}`, 'success');
@@ -2754,6 +2775,25 @@
                 } catch (_) { /* 静默失败 */ }
             },
 
+            async saveCustomTextsToCache(customTexts) {
+                if (!customTexts || Object.keys(customTexts).length === 0) return;
+                try {
+                    const res = await fetch('/api/v1/cache/custom-texts', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({customTexts})
+                    });
+                    if (res.ok) {
+                        this.addDebugLog('info', `saved custom texts batch: ${Object.keys(customTexts).length}`);
+                        await this.fetchCacheStats();
+                    } else {
+                        this.addDebugLog('error', `save custom texts batch failed: ${res.status}`);
+                    }
+                } catch (e) {
+                    this.addDebugLog('error', 'save custom texts batch failed: ' + e.message);
+                }
+            },
+
             async loadCustomTextsFromCache() {
                 try {
                     const res = await fetch('/api/v1/cache/custom-texts');
@@ -2783,17 +2823,34 @@
             },
 
             async clearAllCache() {
-                if (!confirm(`确定要清空所有缓存吗？\n\n当前缓存: ${this.cacheStats.size_mb} MB, ${this.cacheStats.total_entries} 条 EXIF 记录, ${this.cacheStats.custom_texts} 条自定义文本`)) return;
+                if (!confirm(`确定要清空 EXIF/星级缓存吗？\n\n地点标签会被保留。`)) return;
                 try {
                     const res = await fetch('/api/v1/cache', { method: 'DELETE' });
                     if (res.ok) {
-                        this.toast('缓存已清空', 'success');
+                        this.toast('缓存已清空，地点标签已保留', 'success');
                         await this.fetchCacheStats();
                     } else {
                         this.toast('清空失败', 'error');
                     }
                 } catch (e) {
                     this.toast('清空失败: ' + e.message, 'error');
+                }
+            },
+
+            async clearCustomTextCache() {
+                if (!confirm(`Clear all saved location tags?\n\nThis cannot be undone.`)) return;
+                try {
+                    const res = await fetch('/api/v1/cache/custom-texts', { method: 'DELETE' });
+                    if (res.ok) {
+                        this.customTexts = {};
+                        this.applyInputTreeView();
+                        await this.fetchCacheStats();
+                        this.toast('Location tags cleared', 'success');
+                    } else {
+                        this.toast('Clear location tags failed', 'error');
+                    }
+                } catch (e) {
+                    this.toast('Clear location tags failed: ' + e.message, 'error');
                 }
             },
 
