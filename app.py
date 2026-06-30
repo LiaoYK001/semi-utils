@@ -10,12 +10,13 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import render_template, jsonify, request, send_file, Flask, Response, stream_with_context
-from PIL import Image
+from PIL import Image, ImageOps
 
 from core import CONFIG_PATH
 from core.configs import fonts_dir, load_config, load_project_info
 
 PRESETS_PATH = Path('config/presets.json')
+_THUMB_CACHE = {}
 from core.logger import logger, init_from_config
 from core.util import (list_files, list_children, log_rt, get_exif, convert_heic_to_jpeg,
                        get_template, get_template_content, save_template, list_templates, flush_cache)
@@ -260,6 +261,65 @@ def get_file():
     except PermissionError:
         return jsonify({'error': 'Permission denied'}), 403
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/api/v1/file/thumb', methods=['GET'])
+def get_file_thumbnail():
+    """
+    获取图片缩略图
+    GET /api/v1/file/thumb?path=xxx&size=256
+    """
+    file_path = request.args.get('path')
+    if not file_path:
+        return jsonify({'error': 'Missing path parameter'}), 400
+
+    abs_path = os.path.abspath(file_path)
+    if not os.path.exists(abs_path):
+        return jsonify({'error': 'File not found'}), 404
+    if os.path.isdir(abs_path):
+        return jsonify({'error': 'Path is a directory, not a file'}), 400
+
+    try:
+        size = int(request.args.get('size', 256))
+    except (TypeError, ValueError):
+        size = 256
+    size = max(64, min(size, 768))
+
+    try:
+        stat = os.stat(abs_path)
+        cache_key = (abs_path, stat.st_mtime_ns, stat.st_size, size)
+        cached = _THUMB_CACHE.get(cache_key)
+        if cached is not None:
+            buffer = BytesIO(cached)
+            response = send_file(buffer, mimetype='image/jpeg', download_name=f'thumb-{Path(abs_path).stem}.jpg')
+        else:
+            if Path(abs_path).suffix.lower() in {'.heic', '.heif'}:
+                source = Image.open(convert_heic_to_jpeg(abs_path))
+            else:
+                source = Image.open(abs_path)
+            with source:
+                image = ImageOps.exif_transpose(source)
+                if image.mode in ('RGBA', 'P', 'LA'):
+                    image = image.convert('RGB')
+                image.thumbnail((size, size), Image.Resampling.LANCZOS)
+                buffer = BytesIO()
+                image.save(buffer, format='JPEG', quality=82, optimize=True)
+                data = buffer.getvalue()
+                _THUMB_CACHE[cache_key] = data
+                if len(_THUMB_CACHE) > 512:
+                    _THUMB_CACHE.pop(next(iter(_THUMB_CACHE)))
+                buffer.seek(0)
+                response = send_file(buffer, mimetype='image/jpeg', download_name=f'thumb-{Path(abs_path).stem}.jpg')
+
+        response.headers['Cache-Control'] = 'private, max-age=3600'
+        response.headers['Accept-Ranges'] = 'none'
+        return response
+
+    except PermissionError:
+        return jsonify({'error': 'Permission denied'}), 403
+    except Exception as e:
+        logger.error(f"Thumbnail failed {abs_path}: {e}")
         return jsonify({'error': str(e)}), 500
 
 
