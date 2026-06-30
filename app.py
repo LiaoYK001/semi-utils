@@ -78,6 +78,7 @@ def get_config():
         'template_name': template_name,
         'template': template,
         'quality': config.get('DEFAULT', 'quality'),
+        'watermark_font': config.get('render', 'watermark_font', fallback=''),
         'templates': list_templates(),
         'fonts': fonts,
         'presets': load_presets(),
@@ -103,6 +104,10 @@ def save_config():
             config.set('DEFAULT', 'quality', data['quality'])
         if 'template_name' in data:
             config.set('render', 'template_name', data['template_name'])
+        if 'watermark_font' in data:
+            if not config.has_section('render'):
+                config.add_section('render')
+            config.set('render', 'watermark_font', data.get('watermark_font') or '')
 
         # 保存配置到配置文件
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:

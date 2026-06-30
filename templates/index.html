@@ -611,11 +611,22 @@
                     <select :value="currentWatermarkFont"
                             @change="setCurrentWatermarkFont($event.target.value)"
                             class="h-9 w-full px-3 rounded-xl border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-sm bg-white">
-                        <option value="">默认字体</option>
+                        <option value="">继承全局字体</option>
                         <template x-for="font in availableFonts" :key="font">
                             <option :value="font" x-text="font"></option>
                         </template>
                     </select>
+                    <div class="grid grid-cols-[72px_1fr] gap-2 items-center">
+                        <span class="text-[10px] text-slate-400 font-medium">全局字体</span>
+                        <select x-model="globalWatermarkFont"
+                                @change="setGlobalWatermarkFont($event.target.value)"
+                                class="h-8 w-full px-2 rounded-lg border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-xs bg-white">
+                            <option value="">模板默认字体</option>
+                            <template x-for="font in availableFonts" :key="font">
+                                <option :value="font" x-text="font"></option>
+                            </template>
+                        </select>
+                    </div>
                 </div>
 
                 <!-- 地点预设标签（有预览图时可见） -->
@@ -1340,6 +1351,9 @@
                     par.font    = this.extractFontName(node.parameter_font_path || node.font_path);
                     par.height  = this.extractVhPercent(node.parameter_height);
                     par.bottom  = this.extractVhPercent(node.parameter_bottom || node.bottom_offset);
+                    if (!this.globalWatermarkFont) {
+                        this.globalWatermarkFont = loc.font || tim.font || par.font || '';
+                    }
                 } catch (_) { /* 忽略解析错误 */ }
             },
 
@@ -1378,8 +1392,21 @@
                 this.applyBottomCenterSetting(line, field, value);
                 // 字体变更时同步全局字体
                 if (field === 'font') {
-                    this.globalWatermarkFont = value || '';
+                    this.setGlobalWatermarkFont(value || '');
                 }
+            },
+
+            setGlobalWatermarkFont(value) {
+                this.globalWatermarkFont = value || '';
+                if (this.isBottomCenterMode) {
+                    ['location', 'time', 'parameter'].forEach(line => {
+                        this.bottomCenterSettings[line].font = this.globalWatermarkFont;
+                        this.applyBottomCenterSetting(line, 'font', this.globalWatermarkFont);
+                    });
+                }
+                this.config.watermark_font = this.globalWatermarkFont;
+                this.resetPreviewImage();
+                this.addDebugLog('info', `设置全局字体: ${this.globalWatermarkFont || '模板默认字体'}`);
             },
 
             // ---- 地点预设标签管理 ----
@@ -1626,6 +1653,7 @@
                         if (data.fonts) {
                             this.availableFonts = data.fonts;
                         }
+                        this.globalWatermarkFont = data.watermark_font || '';
                         this.addDebugLog('info', `配置加载完成: template=${this.config.template_name}, templates=${this.availableTemplates.length}, fonts=${this.availableFonts.length}`);
                         this.parseBottomCenterSettings();
                         if (data.presets) { this.presets = data.presets; }
@@ -1751,7 +1779,7 @@
                     const res = await fetch('/api/v1/config', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({...this.config, template: jsonVal})
+                        body: JSON.stringify({...this.config, watermark_font: this.globalWatermarkFont, template: jsonVal})
                     });
                     this.addDebugLog('request', `POST /api/v1/config -> ${res.status} ${res.statusText}`);
 
@@ -1988,23 +2016,19 @@
 
             setCurrentWatermarkFont(value) {
                 if (!this.preview.path) return;
-                // 底部居中模式下同步全局字体
-                if (this.isBottomCenterMode) {
-                    this.globalWatermarkFont = value || '';
-                }
                 if (value) {
                     this.watermarkFonts[this.preview.path] = value;
                 } else {
                     delete this.watermarkFonts[this.preview.path];
                 }
-                this.addDebugLog('info', `设置字体: ${this.preview.name || this.preview.path} -> ${value || '默认字体'}`);
+                this.addDebugLog('info', `设置单张字体: ${this.preview.name || this.preview.path} -> ${value || '继承全局'}`);
                 this.resetPreviewImage();
             },
 
             async renderPreview() {
                 if (!this.preview.path) return;
                 this.loading.preview = true;
-                this.addDebugLog('request', `POST /api/v1/preview/render path=${this.preview.path}, template=${this.config.template_name}, text=${this.currentCustomText || '(空)'}, font=${this.currentWatermarkFont || '默认'}`);
+                this.addDebugLog('request', `POST /api/v1/preview/render path=${this.preview.path}, template=${this.config.template_name}, text=${this.currentCustomText || '(空)'}, font=${this.currentWatermarkFont || this.globalWatermarkFont || '默认'}`);
                 try {
                     const response = await fetch('/api/v1/preview/render', {
                         method: 'POST',
@@ -2059,7 +2083,8 @@
                 this.addDebugLog('request', `POST /api/v1/start_process selected=${this.selectedItems.length}`);
                 this.addDebugLog('info', `处理文件: ${JSON.stringify(this.selectedItems)}`);
                 this.addDebugLog('info', `自定义内容: ${JSON.stringify(this.customTexts)}`);
-                this.addDebugLog('info', `字体选择: ${JSON.stringify(this.watermarkFonts)}`);
+                this.addDebugLog('info', `全局字体: ${this.globalWatermarkFont || '模板默认字体'}`);
+                this.addDebugLog('info', `单张字体覆盖: ${JSON.stringify(this.watermarkFonts)}`);
 
                 try {
                     const response = await fetch('/api/v1/start_process', {

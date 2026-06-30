@@ -10,3 +10,6 @@ build
 dist
 logs
 tmp
+config/cache.db
+config/cache.db-shm
+config/cache.db-wal
